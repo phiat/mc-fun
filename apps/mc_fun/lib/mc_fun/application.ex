@@ -9,7 +9,7 @@ defmodule McFun.Application do
   def start(_type, _args) do
     children = [
       {Phoenix.PubSub, name: McFun.PubSub},
-      McFun.Rcon,
+      McFun.Rcon.Supervisor,
       McFun.Redstone.CircuitRegistry,
       McFun.LLM.ModelCache,
       McFun.EventStore,

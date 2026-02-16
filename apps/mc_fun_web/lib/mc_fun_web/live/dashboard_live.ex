@@ -245,7 +245,7 @@ defmodule McFunWeb.DashboardLive do
   end
 
   defp check_rcon do
-    if Process.whereis(McFun.Rcon), do: :connected, else: :disconnected
+    if Process.whereis(McFun.Rcon.Supervisor), do: :connected, else: :disconnected
   end
 
   defp strip_mc_formatting(text) when is_binary(text) do

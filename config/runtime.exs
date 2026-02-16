@@ -12,7 +12,8 @@ env =
 config :mc_fun, :rcon,
   host: Map.get(env, "RCON_HOST", "localhost"),
   port: String.to_integer(Map.get(env, "RCON_PORT", "25575")),
-  password: Map.get(env, "RCON_PASSWORD", "")
+  password: Map.get(env, "RCON_PASSWORD", ""),
+  pool_size: String.to_integer(Map.get(env, "RCON_POOL_SIZE", "2"))
 
 # Minecraft server (for mineflayer)
 config :mc_fun, :minecraft,

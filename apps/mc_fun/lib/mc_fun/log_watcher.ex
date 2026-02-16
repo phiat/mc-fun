@@ -183,11 +183,19 @@ defmodule McFun.LogWatcher do
 
       %{state | player_data: %{}}
     else
+      # Fetch player data in parallel across the poll pool
       new_data =
-        for player <- player_list, into: %{} do
-          data = fetch_single_player_data(player)
-          {player, data}
-        end
+        player_list
+        |> Task.async_stream(
+          fn player -> {player, fetch_single_player_data(player)} end,
+          max_concurrency: McFun.Rcon.pool_size(),
+          timeout: 10_000,
+          on_timeout: :kill_task
+        )
+        |> Enum.reduce(%{}, fn
+          {:ok, {player, data}}, acc -> Map.put(acc, player, data)
+          {:exit, _reason}, acc -> acc
+        end)
 
       if new_data != state.player_data do
         Phoenix.PubSub.broadcast(McFun.PubSub, "player_statuses", :player_statuses_updated)
@@ -198,7 +206,7 @@ defmodule McFun.LogWatcher do
   end
 
   defp fetch_single_player_data(player) do
-    case McFun.Rcon.command("execute as #{player} run data get entity @s") do
+    case McFun.Rcon.poll_command("execute as #{player} run data get entity @s") do
       {:ok, response} ->
         case McFun.SNBT.parse_entity_response(response) do
           {:ok, data} when is_map(data) ->
@@ -238,7 +246,7 @@ defmodule McFun.LogWatcher do
   end
 
   defp fetch_single_field(player, key, cmd, acc) do
-    case McFun.Rcon.command(cmd) do
+    case McFun.Rcon.poll_command(cmd) do
       {:ok, response} ->
         case McFun.SNBT.parse_entity_response(response) do
           {:ok, value} -> Map.put(acc, key, coerce_field(key, value))

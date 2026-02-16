@@ -1,0 +1,235 @@
+defmodule McFun.Rcon.Connection do
+  @moduledoc """
+  RCON client GenServer implementing the Source RCON Protocol over TCP.
+
+  Each connection maintains its own TCP socket and authenticates independently.
+  Multiple connections are managed by `McFun.Rcon.Supervisor` and registered
+  in `McFun.Rcon.Registry` under keys like `:command` or `{:poll, N}`.
+
+  Packet format: [length(4 LE) | id(4 LE) | type(4 LE) | body(null-terminated) | pad(1)]
+  """
+  use GenServer
+  require Logger
+
+  @login_type 3
+  @command_type 2
+  @response_type 0
+  @heartbeat_interval 30_000
+
+  # Client API
+
+  def start_link(opts) do
+    name = Keyword.fetch!(opts, :name)
+    via = {:via, Registry, {McFun.Rcon.Registry, name}}
+    GenServer.start_link(__MODULE__, opts, name: via)
+  end
+
+  # GenServer callbacks
+
+  @impl true
+  def init(opts) do
+    config = Application.get_env(:mc_fun, :rcon, [])
+    host = Keyword.get(opts, :host, Keyword.get(config, :host, "localhost"))
+    port = Keyword.get(opts, :port, Keyword.get(config, :port, 25_575))
+    password = Keyword.get(opts, :password, Keyword.get(config, :password, ""))
+    lane = Keyword.fetch!(opts, :name)
+
+    state = %{
+      host: host,
+      port: port,
+      password: password,
+      socket: nil,
+      request_id: 1,
+      pending: %{},
+      healthy: false,
+      lane: lane
+    }
+
+    case connect(state) do
+      {:ok, state} ->
+        case authenticate(state) do
+          {:ok, state} ->
+            Logger.info("RCON [#{inspect(lane)}] connected to #{host}:#{port}")
+            schedule_heartbeat()
+            {:ok, %{state | healthy: true}}
+
+          {:error, reason} ->
+            Logger.error("RCON [#{inspect(lane)}] auth failed: #{inspect(reason)}")
+            {:stop, {:auth_failed, reason}}
+        end
+
+      {:error, reason} ->
+        Logger.error("RCON [#{inspect(lane)}] connect failed: #{inspect(reason)}")
+        {:stop, {:connect_failed, reason}}
+    end
+  end
+
+  @impl true
+  def handle_call(:healthy?, _from, state) do
+    {:reply, state.healthy, state}
+  end
+
+  @impl true
+  def handle_call({:command, cmd}, from, state) do
+    {id, state} = next_id(state)
+
+    case send_packet(state.socket, id, @command_type, cmd) do
+      :ok ->
+        state = put_in(state.pending[id], from)
+        {:noreply, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
+  def handle_info({:tcp, _socket, data}, state) do
+    case parse_packet(data) do
+      {:ok, id, _type, body} ->
+        case Map.pop(state.pending, id) do
+          {nil, _} ->
+            {:noreply, state}
+
+          {:heartbeat, pending} ->
+            {:noreply, %{state | pending: pending}}
+
+          {from, pending} ->
+            GenServer.reply(from, {:ok, body})
+            {:noreply, %{state | pending: pending}}
+        end
+
+      {:error, reason} ->
+        Logger.warning("RCON [#{inspect(state.lane)}] parse error: #{inspect(reason)}")
+        {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_info({:tcp_closed, _socket}, state) do
+    Logger.warning("RCON [#{inspect(state.lane)}] connection closed, reconnecting...")
+
+    case reconnect(state) do
+      {:ok, state} -> {:noreply, state}
+      {:error, _reason} -> {:stop, :connection_lost, state}
+    end
+  end
+
+  @impl true
+  def handle_info({:tcp_error, _socket, reason}, state) do
+    Logger.error("RCON [#{inspect(state.lane)}] TCP error: #{inspect(reason)}")
+    {:stop, {:tcp_error, reason}, state}
+  end
+
+  @impl true
+  def handle_info(:heartbeat, state) do
+    {id, state} = next_id(state)
+
+    case send_packet(state.socket, id, @command_type, "list") do
+      :ok ->
+        state = put_in(state.pending[id], :heartbeat)
+        schedule_heartbeat()
+        {:noreply, %{state | healthy: true}}
+
+      {:error, reason} ->
+        Logger.warning(
+          "RCON [#{inspect(state.lane)}] heartbeat failed: #{inspect(reason)}, reconnecting..."
+        )
+
+        case reconnect(state) do
+          {:ok, state} ->
+            schedule_heartbeat()
+            {:noreply, %{state | healthy: true}}
+
+          {:error, _} ->
+            schedule_heartbeat()
+            {:noreply, %{state | healthy: false}}
+        end
+    end
+  end
+
+  # Private
+
+  defp connect(state) do
+    host = to_charlist(state.host)
+    opts = [:binary, active: true, packet: :raw]
+
+    case :gen_tcp.connect(host, state.port, opts, 5_000) do
+      {:ok, socket} -> {:ok, %{state | socket: socket}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp authenticate(state) do
+    {id, state} = next_id(state)
+
+    with :ok <- send_packet(state.socket, id, @login_type, state.password) do
+      read_auth_response(state, id, 3)
+    end
+  end
+
+  defp read_auth_response(_state, _id, 0), do: {:error, :auth_timeout}
+
+  defp read_auth_response(state, id, attempts) do
+    case recv_packet(state.socket) do
+      {:ok, ^id, @command_type, _body} -> {:ok, state}
+      {:ok, -1, @command_type, _} -> {:error, :auth_failed}
+      {:ok, _, @response_type, _} -> read_auth_response(state, id, attempts - 1)
+      {:error, reason} -> {:error, reason}
+      other -> {:error, {:unexpected, other}}
+    end
+  end
+
+  defp reconnect(state) do
+    if state.socket, do: :gen_tcp.close(state.socket)
+
+    for {_id, from} <- state.pending, from != :heartbeat do
+      GenServer.reply(from, {:error, :connection_lost})
+    end
+
+    state = %{state | socket: nil, pending: %{}, healthy: false}
+
+    with {:ok, state} <- connect(state),
+         {:ok, state} <- authenticate(state) do
+      Logger.info("RCON [#{inspect(state.lane)}] reconnected")
+      {:ok, %{state | healthy: true}}
+    end
+  end
+
+  defp schedule_heartbeat do
+    Process.send_after(self(), :heartbeat, @heartbeat_interval)
+  end
+
+  defp next_id(state) do
+    {state.request_id, %{state | request_id: state.request_id + 1}}
+  end
+
+  defp send_packet(socket, id, type, body) do
+    payload = <<id::little-32, type::little-32>> <> body <> <<0, 0>>
+    length = byte_size(payload)
+    packet = <<length::little-32>> <> payload
+    :gen_tcp.send(socket, packet)
+  end
+
+  defp recv_packet(socket, timeout \\ 5_000) do
+    :inet.setopts(socket, active: false)
+
+    result =
+      with {:ok, <<length::little-32>>} <- :gen_tcp.recv(socket, 4, timeout),
+           {:ok, data} <- :gen_tcp.recv(socket, length, timeout) do
+        parse_packet(<<length::little-32>> <> data)
+      end
+
+    :inet.setopts(socket, active: true)
+    result
+  end
+
+  defp parse_packet(<<length::little-32, rest::binary>>) when byte_size(rest) >= length do
+    <<id::little-signed-32, type::little-32, rest::binary>> = rest
+    body_size = length - 10
+    <<body::binary-size(body_size), 0, 0>> = rest
+    {:ok, id, type, body}
+  end
+
+  defp parse_packet(_data), do: {:error, :incomplete_packet}
+end

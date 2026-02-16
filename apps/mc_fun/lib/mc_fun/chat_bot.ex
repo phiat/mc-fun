@@ -147,9 +147,18 @@ defmodule McFun.ChatBot do
     bot_name = state.bot_name
 
     Task.start(fn ->
-      if reply != "" do
-        send_paginated(bot_name, reply)
-      end
+      # Always send a chat reply — if the LLM returned only tool calls with no text,
+      # generate a brief acknowledgement so the player isn't left in silence
+      chat_reply =
+        if reply != "" do
+          reply
+        else
+          tool_names = Enum.map_join(tool_calls, ", ", & &1.name)
+          Logger.info("ChatBot #{bot_name}: empty text with tools [#{tool_names}], auto-acking")
+          nil
+        end
+
+      if chat_reply, do: send_paginated(bot_name, chat_reply)
 
       for %{name: name, args: args} <- tool_calls do
         Logger.info("ChatBot #{bot_name}: tool call #{name}(#{inspect(args)})")
