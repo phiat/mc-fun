@@ -21,5 +21,5 @@ defmodule McFunWeb.Gettext do
 
   See the [Gettext Docs](https://hexdocs.pm/gettext) for detailed usage.
   """
-  use Gettext.Backend, otp_app: :mc_fun
+  use Gettext.Backend, otp_app: :mc_fun_web
 end
