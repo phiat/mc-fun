@@ -65,6 +65,8 @@ mc-fun/                              # repo root = umbrella root
 │   │   │   ├── display.ex           # Block text rendering in-world
 │   │   │   ├── music.ex             # Music/sound via RCON
 │   │   │   ├── redstone.ex          # Redstone circuit helpers
+│   │   │   ├── snbt.ex             # SNBT parser public API
+│   │   │   ├── snbt/parser.ex      # Recursive descent SNBT parser
 │   │   │   └── llm/                 # Groq API client + model cache
 │   │   └── priv/mineflayer/bridge.js # Node.js mineflayer bridge
 │   │
@@ -123,7 +125,8 @@ After start: `McFun.Events.Handlers.register_all()` registers default event hand
 - **Bot actions in bridge.js**: dig, dig_looking_at, dig_area, find_and_dig, survey, place, equip, craft, drop, goto, follow, jump, sneak, attack, move, look, chat, whisper, inventory, position, players, quit.
 - **Pathfinder**: mineflayer-pathfinder loaded on spawn, falls back to simple movement if init fails.
 - **LogWatcher**: First poll silently populates player set (no spurious join events on restart).
-- **Player data fetching**: Uses `execute as <player> run data get entity @s` (not `data get entity <player>` which fails on remote). Falls back to per-field queries (Health, Pos, Dimension, foodLevel) if full entity parse returns nil. Logs warnings on failures.
+- **SNBT parser**: `McFun.SNBT` parses Minecraft's Stringified NBT format into Elixir maps/lists/numbers. Single-pass recursive descent (~230 lines). Returns `{:error, :truncated}` on incomplete input. Used by LogWatcher for player data; available for any `data get entity/block` response. See `docs/nbt.md`.
+- **Player data fetching**: Uses `execute as <player> run data get entity @s`, parsed via SNBT. RCON truncates the full blob (~512 chars), so parser returns `:truncated` and LogWatcher falls back to per-field queries (Health, Pos, Dimension, foodLevel). Each field response is short enough to parse fully.
 
 ## Environment
 

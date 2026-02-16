@@ -16,6 +16,7 @@ Phoenix LiveView control panel for a Minecraft server. Manage bots, RCON command
 - **Block Display** — Render text as blocks in the Minecraft world
 - **Event Stream** — Real-time event log (joins, leaves, chat, deaths, advancements)
 - **Behaviors** — Patrol, follow, and guard behaviors for bots
+- **SNBT Parser** — Recursive descent parser for Minecraft's NBT text format (player data, inventories, block states)
 
 ## Setup
 
@@ -58,6 +59,7 @@ Phoenix LiveView Dashboard (/dashboard)
     │
     ├── McFun.Presets ─────── 22 bot personalities across 6 categories
     │
+    ├── McFun.SNBT ───────── SNBT parser (NBT text → Elixir maps/lists)
     ├── McFun.Rcon ────────── Minecraft Server (RCON)
     ├── McFun.Effects ─────── RCON particle/sound commands
     └── McFun.Display ─────── Block text rendering

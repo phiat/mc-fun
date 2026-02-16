@@ -1,30 +1,69 @@
-# SNBT Parser — Design Plan
+# SNBT Parser
 
-## Problem
+`McFun.SNBT` — a single-pass recursive descent parser for Minecraft's Stringified NBT format. Parses RCON `data get entity` responses into native Elixir terms. No external dependencies.
 
-We regex-parse Minecraft RCON responses to extract player data. The responses are SNBT (Stringified NBT) — a recursive, typed data format. Regex can't handle nested structures, so we use a fragile two-step fallback: try the full entity blob, fail (truncated by RCON), then issue 4 individual field queries. This is 5 RCON calls per player per 2s poll cycle when 1 would suffice if we could parse the blob properly.
-
-Beyond player data, SNBT appears everywhere in MC commands — inventories, enchantments, block states, mob data. A proper parser unlocks all of it.
-
-## What SNBT Looks Like
-
-Real RCON output from our server:
+## Files
 
 ```
-# Full entity (truncated by RCON at ~512 chars)
-{Bukkit.updateLevel: 2, foodTickTimer: 0, AbsorptionAmount: 0.0f, XpTotal: 33,
- playerGameType: 0, Invulnerable: 0b, SelectedItemSlot: 3, ...
-
-# Individual field queries (not truncated)
-15.68935f                                                    # Health
-[-412.3d, 62.0d, 288.4d]                                    # Pos
-"minecraft:overworld"                                        # Dimension
-17                                                           # foodLevel
-[{Slot: 0b, id: "minecraft:stone_pickaxe", count: 1,        # Inventory
-  components: {"minecraft:damage": 5}}, {Slot: ...
+apps/mc_fun/lib/mc_fun/snbt.ex         # Public API: parse/1, parse_entity_response/1, get/2
+apps/mc_fun/lib/mc_fun/snbt/parser.ex   # Recursive descent parser (~230 lines)
+apps/mc_fun/test/mc_fun/snbt_test.exs   # 42 unit tests (no RCON needed)
 ```
 
-All responses are prefixed with `<Player> has the following entity data: ` which we strip first.
+## Usage
+
+```elixir
+# Parse any SNBT string
+McFun.SNBT.parse("{Health: 20.0f, foodLevel: 20}")
+# => {:ok, %{"Health" => 20.0, "foodLevel" => 20}}
+
+McFun.SNBT.parse("15.68935f")
+# => {:ok, 15.68935}
+
+McFun.SNBT.parse("[I; 1, 2, 3]")
+# => {:ok, [1, 2, 3]}
+
+# Parse RCON response (strips "Player has the following entity data: " prefix)
+McFun.SNBT.parse_entity_response("Steve has the following entity data: 20.0f")
+# => {:ok, 20.0}
+
+# Dot-path access into parsed data
+{:ok, data} = McFun.SNBT.parse(~s|{Pos: [1.0d, 2.0d, 3.0d]}|)
+McFun.SNBT.get(data, "Pos.0")
+# => {:ok, 1.0}
+
+# List path syntax
+McFun.SNBT.get(data, ["Pos", 0])
+# => {:ok, 1.0}
+
+# Truncated input (RCON cuts off large responses)
+McFun.SNBT.parse("{Health: 20.0f, Pos: [-412.3d, 62.0d")
+# => {:error, :truncated}
+```
+
+## How LogWatcher Uses It
+
+LogWatcher polls RCON every 2s for player data. The flow:
+
+1. Send `execute as <player> run data get entity @s`
+2. RCON returns full entity NBT — but truncates at ~512 chars
+3. SNBT parser returns `{:error, :truncated}`
+4. Fall back to individual field queries: `... data get entity @s Health`, etc.
+5. Each field response is short enough to parse fully
+
+```elixir
+# Full entity (truncated by RCON — parser detects cleanly)
+"{Bukkit.updateLevel: 2, foodTickTimer: 0, AbsorptionAmount: 0.0f, ..."
+# => {:error, :truncated}
+
+# Individual fields (not truncated — parse succeeds)
+"15.68935f"                                                → {:ok, 15.68935}
+"[-412.3d, 62.0d, 288.4d]"                                → {:ok, [-412.3, 62.0, 288.4]}
+"\"minecraft:overworld\""                                  → {:ok, "minecraft:overworld"}
+"17"                                                       → {:ok, 17}
+```
+
+If a future MC server or RCON implementation returns full untruncated entity data, the parser handles it natively — no code changes needed.
 
 ## SNBT Grammar
 
@@ -39,236 +78,87 @@ int_array   = "[" "I" ";" (int   ("," int)*   ","?)? "]"
 long_array  = "[" "L" ";" (long  ("," long)*  ","?)? "]"
 
 string      = quoted_string | bare_string
-quoted_string = '"' (escaped_char | [^"\\])* '"'
-            | "'" (escaped_char | [^'\\])* "'"
-bare_string = [a-zA-Z0-9._+-]+          # unquoted, no spaces/special chars
+quoted_string = '"' (escaped_char | [^"\\])* '"' | "'" (escaped_char | [^'\\])* "'"
+bare_string = [a-zA-Z0-9._+-]+
 
 number      = float | double | long | short | byte | int
 float       = [-]?[0-9]*"."?[0-9]+ ("f" | "F")
-double      = [-]?[0-9]*"."[0-9]+ ("d" | "D")?   # d suffix optional if has decimal
+double      = [-]?[0-9]*"."[0-9]+ ("d" | "D")?
 long        = [-]?[0-9]+ ("l" | "L")
 short       = [-]?[0-9]+ ("s" | "S")
 byte        = [-]?[0-9]+ ("b" | "B")
-int         = [-]?[0-9]+                            # no suffix = int
+int         = [-]?[0-9]+
 
-bool        = "true" → 1b | "false" → 0b           # sugar, stored as byte
+bool        = "true" | "false"   # sugar for 1/0 (byte)
 ```
 
 ### Type Suffix Summary
 
-| Suffix | Type   | Elixir representation | Example      |
-|--------|--------|----------------------|--------------|
-| `b`/`B`| byte   | integer              | `0b`, `127b` |
-| `s`/`S`| short  | integer              | `300s`       |
-| (none) | int    | integer              | `33`         |
-| `l`/`L`| long   | integer              | `1000000L`   |
-| `f`/`F`| float  | float                | `20.0f`      |
-| `d`/`D`| double | float                | `-412.3d`    |
-| (none) | double | float (if has `.`)   | `0.5`        |
+| Suffix | Type   | Elixir type | Example      |
+|--------|--------|-------------|--------------|
+| `b`/`B`| byte   | integer     | `0b`, `127b` |
+| `s`/`S`| short  | integer     | `300s`       |
+| (none) | int    | integer     | `33`         |
+| `l`/`L`| long   | integer     | `1000000L`   |
+| `f`/`F`| float  | float       | `20.0f`      |
+| `d`/`D`| double | float       | `-412.3d`    |
+| (none) | double | float       | `0.5`        |
 
-### Edge Cases
+### Design Decisions
 
-- Trailing commas allowed: `{a: 1, b: 2,}` is valid
-- Keys can be quoted or bare: `"minecraft:damage": 5` vs `Health: 20.0f`
-- Keys with dots: `Bukkit.updateLevel` (bare string with `.`)
-- Keys with colons: `"minecraft:damage"` (must be quoted if contains `:`)
-- Booleans: `true`/`false` are sugar for `1b`/`0b`
-- Empty compounds: `{}`
-- Empty lists: `[]`
+- **Simple representation.** Compounds → maps, lists → lists, all numbers → integer or float. No type wrappers. We read MC data, we don't round-trip it back to SNBT.
+- **Truncation is a first-class signal.** Parser returns `{:error, :truncated}` on unexpected EOF. Callers branch on this — no nil-checking heuristics.
+- **Single-pass recursive descent.** No tokenizer. Each `parse_*` function takes a binary, returns `{:ok, value, rest}`. ~230 lines total.
+- **Booleans desugar.** `true` → `1`, `false` → `0` (matching MC's byte representation).
+- **Trailing commas allowed.** `{a: 1, b: 2,}` and `[1, 2, 3,]` are valid (MC emits these).
+- **Suffixes case-insensitive.** `0B` == `0b`, `20.0F` == `20.0f`.
+
+### Edge Cases Handled
+
+- Bare keys with dots: `Bukkit.updateLevel`
+- Quoted keys with colons: `"minecraft:damage"`
 - Nested compounds in lists: `[{Slot: 0b, id: "minecraft:stone"}, ...]`
-- Suffixes case-insensitive: `0B` == `0b`, `20.0F` == `20.0f`
+- Escaped characters in quoted strings: `"say \"hello\""`
+- Empty containers: `{}`, `[]`, `[I;]`
 
-## Elixir Representation
+## NBT Background
 
-```elixir
-# SNBT → Elixir mapping
-{:compound, %{"Health" => 20.0, "Pos" => [-412.3, 62.0, 288.4], ...}}
-{:list, [%{"Slot" => 0, "id" => "minecraft:stone_pickaxe"}, ...]}
-{:byte_array, [0, 30]}
-{:int_array, [0, -300]}
-{:long_array, [0, 240]}
+NBT (Named Binary Tag) is Minecraft's native data format — hierarchical, typed, used for everything from player saves to chunk storage. SNBT is its human-readable text form, used in commands and RCON responses.
 
-# Or simpler — lose type info, gain usability:
-%{"Health" => 20.0, "Pos" => [-412.3, 62.0, 288.4]}
-```
+### Tag Types
 
-**Decision: go simple.** We don't need to round-trip back to SNBT. We need to _read_ MC data into Elixir terms. Drop the type wrappers — compounds become maps, lists become lists, all numbers become integer or float.
+| ID   | Tag           | Description                    |
+|------|---------------|--------------------------------|
+| 0x00 | TAG_End       | Marks end of compound          |
+| 0x01 | TAG_Byte      | Signed 8-bit int (`0b`)        |
+| 0x02 | TAG_Short     | Signed 16-bit int (`300s`)     |
+| 0x03 | TAG_Int       | Signed 32-bit int (`33`)       |
+| 0x04 | TAG_Long      | Signed 64-bit int (`1000000L`) |
+| 0x05 | TAG_Float     | 32-bit float (`20.0f`)         |
+| 0x06 | TAG_Double    | 64-bit float (`-412.3d`)       |
+| 0x07 | TAG_Byte_Array| Array of bytes (`[B; 0b, 1b]`) |
+| 0x08 | TAG_String    | UTF-8 string                   |
+| 0x09 | TAG_List      | Typed list (`[1, 2, 3]`)       |
+| 0x0A | TAG_Compound  | Map of named tags (`{...}`)    |
+| 0x0B | TAG_Int_Array | Array of ints (`[I; 1, 2]`)    |
+| 0x0C | TAG_Long_Array| Array of longs (`[L; 0l, 1l]`) |
 
-```elixir
-SNBT.parse(~s|{Health: 20.0f, Pos: [-412.3d, 62.0d, 288.4d], Dimension: "minecraft:overworld"}|)
-# => {:ok, %{"Health" => 20.0, "Pos" => [-412.3, 62.0, 288.4], "Dimension" => "minecraft:overworld"}}
+### Common MC Data Sources
 
-SNBT.parse("15.68935f")
-# => {:ok, 15.68935}
+- `data get entity <player>` — player NBT (health, inventory, position, etc.)
+- `data get entity <selector>` — mob/entity NBT
+- `data get block <x> <y> <z>` — block entity NBT (chests, signs, etc.)
+- `level.dat` — world seed, spawn point, game rules
+- `<player>.dat` — player save files
 
-SNBT.parse(~s|[{Slot: 0b, id: "minecraft:stone_pickaxe", count: 1}]|)
-# => {:ok, [%{"Slot" => 0, "id" => "minecraft:stone_pickaxe", "count" => 1}]}
-```
+### Future Uses
 
-## Module Design
-
-```
-apps/mc_fun/lib/mc_fun/snbt.ex        # public API + response prefix stripping
-apps/mc_fun/lib/mc_fun/snbt/parser.ex  # tokenizer + recursive descent parser
-apps/mc_fun/test/mc_fun/snbt_test.exs  # unit tests (no RCON needed)
-```
-
-### McFun.SNBT (public API)
-
-```elixir
-defmodule McFun.SNBT do
-  @moduledoc "Parse Minecraft SNBT (Stringified NBT) into Elixir terms."
-
-  # Parse raw SNBT string
-  def parse(snbt)
-  # => {:ok, term} | {:error, reason}
-
-  # Parse RCON "data get entity" response (strips player prefix)
-  def parse_entity_response(response)
-  # => {:ok, term} | {:error, reason}
-
-  # Convenience: parse + get nested path
-  def get(snbt, path) when is_binary(snbt)
-  def get(parsed, path) when is_map(parsed)
-  # path: "Health" or "Inventory.0.id" or ["Inventory", 0, "id"]
-  # => {:ok, value} | :error
-end
-```
-
-### McFun.SNBT.Parser (internal)
-
-Recursive descent parser. No external deps. ~120-150 lines.
-
-```elixir
-defmodule McFun.SNBT.Parser do
-  # Entry point: parses a full SNBT string into an Elixir term
-  def parse(input)  # => {:ok, term, rest} | {:error, reason}
-
-  # Recursive descent functions (all private):
-  # parse_value/1     — dispatches based on first char
-  # parse_compound/1  — "{" ... "}"
-  # parse_list/1      — "[" ... "]" (also handles B;/I;/L; arrays)
-  # parse_string/1    — quoted or bare
-  # parse_number/1    — with suffix detection
-  # skip_whitespace/1 — spaces, tabs, newlines
-end
-```
-
-**Parser strategy:** Work on a binary, advancing a cursor. No tokenizer pass — single-pass recursive descent. Each `parse_*` function takes a binary, returns `{:ok, value, rest}` where `rest` is the unparsed remainder.
-
-### Key implementation details
-
-1. **Dispatch on first character:**
-   - `{` → compound
-   - `[` → list or typed array
-   - `"` or `'` → quoted string
-   - `-` or digit → number
-   - `t`/`f` → maybe boolean, then bare string fallback
-   - anything else → bare string
-
-2. **Number parsing:** Read digits, check suffix. Tricky part: `0b` could be byte 0 or start of a bare string. Context: if we're reading a value (after `:` or in a list), it's a byte. In practice MC always uses numeric-only before `b`.
-
-3. **Truncation handling:** The full entity blob gets cut off by RCON mid-value. Parser will hit unexpected EOF → return `{:error, :truncated}`. Caller falls back to field queries. This replaces the current "parse then check for nil" heuristic with a clean signal.
-
-4. **String keys:** Bare strings end at `:`, `,`, `}`, `]`, or whitespace. Quoted strings handle `\"` escapes.
-
-## Integration with LogWatcher
-
-```elixir
-# Before (current — 5 RCON calls, regex, fallback)
-defp fetch_single_player_data(player) do
-  case McFun.Rcon.command("execute as #{player} run data get entity @s") do
-    {:ok, response} ->
-      data = parse_entity_data(response)  # regex, usually fails
-      if data.health == nil, do: fetch_player_data_fields(player), else: data
-    {:error, _} -> fetch_player_data_fields(player)
-  end
-end
-
-# After (1 RCON call when not truncated, 5 as fallback)
-defp fetch_single_player_data(player) do
-  case McFun.Rcon.command("execute as #{player} run data get entity @s") do
-    {:ok, response} ->
-      case McFun.SNBT.parse_entity_response(response) do
-        {:ok, data} when is_map(data) ->
-          %{
-            health: data["Health"],
-            food: data["foodLevel"],
-            position: parse_pos(data["Pos"]),
-            dimension: data["Dimension"]
-          }
-
-        {:error, :truncated} ->
-          # RCON cut off the response — fall back to individual queries
-          fetch_player_data_fields(player)
-
-        {:error, reason} ->
-          Logger.warning("SNBT parse failed: #{inspect(reason)}")
-          fetch_player_data_fields(player)
-      end
-
-    {:error, reason} ->
-      Logger.warning("Entity data command failed for #{player}: #{inspect(reason)}")
-      fetch_player_data_fields(player)
-  end
-end
-```
-
-## Future Uses (once parser exists)
-
-- **Inventory inspection**: `data get entity @s Inventory` → full item list with enchantments
-- **Block state reading**: `data get block x y z` → block entity data (chests, signs, etc.)
+- **Inventory inspection**: `data get entity @s Inventory` → items with enchantments
+- **Block state reading**: `data get block x y z` → chest contents, sign text
 - **Mob data**: `data get entity @e[type=zombie,limit=1]` → mob stats
-- **Structure commands**: Parse `/setblock` and `/fill` NBT arguments
-- **ChatBot context**: Give LLM structured inventory/equipment data instead of raw survey
+- **ChatBot context**: Give LLM structured inventory/equipment data
 
-## Test Plan
+### Reference
 
-Unit tests only — no RCON needed. Test against real MC output strings.
-
-```elixir
-# Scalars
-assert SNBT.parse("20.0f") == {:ok, 20.0}
-assert SNBT.parse("0b") == {:ok, 0}
-assert SNBT.parse("33") == {:ok, 33}
-assert SNBT.parse("1000000L") == {:ok, 1_000_000}
-assert SNBT.parse(~s|"minecraft:overworld"|) == {:ok, "minecraft:overworld"}
-
-# Compound
-assert SNBT.parse("{Health: 20.0f, foodLevel: 20}") ==
-  {:ok, %{"Health" => 20.0, "foodLevel" => 20}}
-
-# Nested
-assert SNBT.parse(~s|{Pos: [-412.3d, 62.0d, 288.4d], Dimension: "minecraft:overworld"}|) ==
-  {:ok, %{"Pos" => [-412.3, 62.0, 288.4], "Dimension" => "minecraft:overworld"}}
-
-# Inventory (list of compounds)
-assert {:ok, [%{"Slot" => 0, "id" => "minecraft:stone_pickaxe"} | _]} =
-  SNBT.parse(~s|[{Slot: 0b, id: "minecraft:stone_pickaxe", count: 1}]|)
-
-# Typed arrays
-assert SNBT.parse("[I; 1, 2, 3]") == {:ok, [1, 2, 3]}
-assert SNBT.parse("[B; 0b, 30b]") == {:ok, [0, 30]}
-
-# Truncation
-assert SNBT.parse("{Health: 20.0f, Pos: [-412.3d, 62.0d") == {:error, :truncated}
-
-# Edge cases
-assert SNBT.parse("{a: 1, b: 2,}") == {:ok, %{"a" => 1, "b" => 2}}  # trailing comma
-assert SNBT.parse("{}") == {:ok, %{}}
-assert SNBT.parse("[]") == {:ok, []}
-assert SNBT.parse("true") == {:ok, 1}   # boolean sugar
-assert SNBT.parse("false") == {:ok, 0}
-
-# Entity response prefix
-assert SNBT.parse_entity_response("Steve has the following entity data: 20.0f") ==
-  {:ok, 20.0}
-```
-
-## Implementation Order
-
-1. `McFun.SNBT.Parser` — recursive descent, scalars first, then compounds/lists
-2. `McFun.SNBT` — public API, prefix stripping, path access
-3. `snbt_test.exs` — unit tests against real MC output
-4. Integrate into LogWatcher — replace regex parsers
-5. Clean up dead regex code in LogWatcher
+- [NeoForged NBT docs](https://docs.neoforged.net/docs/datastorage/nbt)
+- [Minecraft Wiki: NBT format](https://minecraft.wiki/w/NBT_format)
