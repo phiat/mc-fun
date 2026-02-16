@@ -10,6 +10,7 @@ defmodule McFun.Rcon do
   @login_type 3
   @command_type 2
   @response_type 0
+  @heartbeat_interval 30_000
 
   # Client API
 
@@ -20,6 +21,13 @@ defmodule McFun.Rcon do
   @doc "Send an RCON command and return the response body."
   def command(cmd, timeout \\ 5_000) do
     GenServer.call(__MODULE__, {:command, cmd}, timeout)
+  end
+
+  @doc "Check if RCON connection is healthy."
+  def healthy? do
+    GenServer.call(__MODULE__, :healthy?, 2_000)
+  catch
+    :exit, _ -> false
   end
 
   # GenServer callbacks
@@ -37,7 +45,8 @@ defmodule McFun.Rcon do
       password: password,
       socket: nil,
       request_id: 1,
-      pending: %{}
+      pending: %{},
+      healthy: false
     }
 
     case connect(state) do
@@ -45,7 +54,8 @@ defmodule McFun.Rcon do
         case authenticate(state) do
           {:ok, state} ->
             Logger.info("RCON connected to #{host}:#{port}")
-            {:ok, state}
+            schedule_heartbeat()
+            {:ok, %{state | healthy: true}}
 
           {:error, reason} ->
             Logger.error("RCON auth failed: #{inspect(reason)}")
@@ -56,6 +66,11 @@ defmodule McFun.Rcon do
         Logger.error("RCON connect failed: #{inspect(reason)}")
         {:stop, {:connect_failed, reason}}
     end
+  end
+
+  @impl true
+  def handle_call(:healthy?, _from, state) do
+    {:reply, state.healthy, state}
   end
 
   @impl true
@@ -79,6 +94,10 @@ defmodule McFun.Rcon do
         case Map.pop(state.pending, id) do
           {nil, _} ->
             {:noreply, state}
+
+          {:heartbeat, pending} ->
+            # Heartbeat response — discard, connection is alive
+            {:noreply, %{state | pending: pending}}
 
           {from, pending} ->
             GenServer.reply(from, {:ok, body})
@@ -105,6 +124,35 @@ defmodule McFun.Rcon do
   def handle_info({:tcp_error, _socket, reason}, state) do
     Logger.error("RCON TCP error: #{inspect(reason)}")
     {:stop, {:tcp_error, reason}, state}
+  end
+
+  @impl true
+  def handle_info(:heartbeat, state) do
+    # Send a lightweight command to detect dead connections early
+    {id, state} = next_id(state)
+
+    case send_packet(state.socket, id, @command_type, "list") do
+      :ok ->
+        # Response will arrive via handle_info({:tcp, ...})
+        # We don't track the heartbeat response — if the connection is dead,
+        # tcp_closed/tcp_error will fire and trigger reconnect
+        state = put_in(state.pending[id], :heartbeat)
+        schedule_heartbeat()
+        {:noreply, %{state | healthy: true}}
+
+      {:error, reason} ->
+        Logger.warning("RCON heartbeat failed: #{inspect(reason)}, reconnecting...")
+
+        case reconnect(state) do
+          {:ok, state} ->
+            schedule_heartbeat()
+            {:noreply, %{state | healthy: true}}
+
+          {:error, _} ->
+            schedule_heartbeat()
+            {:noreply, %{state | healthy: false}}
+        end
+    end
   end
 
   # Private
@@ -145,17 +193,21 @@ defmodule McFun.Rcon do
     if state.socket, do: :gen_tcp.close(state.socket)
 
     # Reply to all pending callers so they don't block until timeout
-    for {_id, from} <- state.pending do
+    for {_id, from} <- state.pending, from != :heartbeat do
       GenServer.reply(from, {:error, :connection_lost})
     end
 
-    state = %{state | socket: nil, pending: %{}}
+    state = %{state | socket: nil, pending: %{}, healthy: false}
 
     with {:ok, state} <- connect(state),
          {:ok, state} <- authenticate(state) do
       Logger.info("RCON reconnected")
-      {:ok, state}
+      {:ok, %{state | healthy: true}}
     end
+  end
+
+  defp schedule_heartbeat do
+    Process.send_after(self(), :heartbeat, @heartbeat_interval)
   end
 
   defp next_id(state) do

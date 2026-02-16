@@ -18,6 +18,8 @@ defmodule McFun.LogWatcher do
   require Logger
 
   @default_poll_interval 2_000
+  # Player data is fetched less frequently to reduce RCON load
+  @default_data_poll_multiplier 5
 
   # MC server log patterns (used when tailing a local log file)
   @patterns [
@@ -55,14 +57,20 @@ defmodule McFun.LogWatcher do
     log_path = Keyword.get(config, :log_path)
     poll_interval = Keyword.get(config, :poll_interval, @default_poll_interval)
 
+    data_poll_mult =
+      Keyword.get(config, :data_poll_multiplier, @default_data_poll_multiplier)
+
     state = %{
       log_path: log_path,
       io_device: nil,
       last_size: 0,
       poll_interval: poll_interval,
+      data_poll_multiplier: data_poll_mult,
+      poll_count: 0,
       mode: :rcon,
       online_players: MapSet.new(),
       player_data: %{},
+      players_changed: true,
       first_poll: true
     }
 
@@ -108,8 +116,8 @@ defmodule McFun.LogWatcher do
       {:ok, response} ->
         current_set = response |> parse_player_list() |> MapSet.new()
         Logger.info("LogWatcher: initial poll found #{MapSet.size(current_set)} players online")
-        state = %{state | online_players: current_set, first_poll: false}
-        fetch_player_data(state)
+        state = %{state | online_players: current_set, first_poll: false, players_changed: true}
+        maybe_fetch_player_data(state)
 
       {:error, reason} ->
         Logger.debug("LogWatcher RCON poll failed: #{inspect(reason)}")
@@ -118,11 +126,14 @@ defmodule McFun.LogWatcher do
   end
 
   defp poll_rcon(state) do
+    state = %{state | poll_count: state.poll_count + 1}
+
     case McFun.Rcon.command("list") do
       {:ok, response} ->
         current = parse_player_list(response)
         current_set = MapSet.new(current)
         old_set = state.online_players
+        changed = current_set != old_set
 
         # Detect joins
         for player <- MapSet.difference(current_set, old_set) |> MapSet.to_list() do
@@ -140,12 +151,25 @@ defmodule McFun.LogWatcher do
           })
         end
 
-        state = %{state | online_players: current_set}
-        fetch_player_data(state)
+        state = %{state | online_players: current_set, players_changed: changed}
+        maybe_fetch_player_data(state)
 
       {:error, reason} ->
         Logger.debug("LogWatcher RCON poll failed: #{inspect(reason)}")
         state
+    end
+  end
+
+  # Fetch player data when players changed or on every Nth poll
+  defp maybe_fetch_player_data(state) do
+    due? =
+      state.players_changed or
+        rem(state.poll_count, state.data_poll_multiplier) == 0
+
+    if due? do
+      fetch_player_data(state)
+    else
+      state
     end
   end
 

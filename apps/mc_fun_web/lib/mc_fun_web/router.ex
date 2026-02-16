@@ -12,6 +12,7 @@ defmodule McFunWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug McFunWeb.Plugs.WebhookAuth
   end
 
   scope "/", McFunWeb do
