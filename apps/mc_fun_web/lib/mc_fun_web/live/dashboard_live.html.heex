@@ -30,7 +30,7 @@
   <%!-- Status bar + nav --%>
   <div class="border-b border-[#222] px-4 py-1.5 bg-[#0d0d14]">
     <div class="max-w-7xl mx-auto flex items-center justify-between">
-      <div class="flex gap-1">
+      <div class="flex gap-1" role="tablist" aria-label="Dashboard sections">
         <button
           :for={
             {id, label} <- [
@@ -42,6 +42,9 @@
               {"events", "EVENTS"}
             ]
           }
+          role="tab"
+          aria-selected={to_string(@active_tab == id)}
+          aria-controls={"panel-#{id}"}
           class={"px-3 py-1 text-[10px] tracking-widest border transition-all " <>
             if(@active_tab == id,
               do: "border-[#00ffff] text-[#00ffff] bg-[#00ffff]/10",
@@ -67,7 +70,7 @@
 
   <div class="max-w-7xl mx-auto p-4">
     <%!-- ==================== UNITS TAB ==================== --%>
-    <div :if={@active_tab == "bots"} class="space-y-4">
+    <div :if={@active_tab == "bots"} id="panel-bots" role="tabpanel" class="space-y-4">
       <%!-- Deploy Panel --%>
       <McFunWeb.DashboardComponents.deploy_panel
         selected_model={@selected_model}
@@ -132,7 +135,7 @@
     </div>
 
     <%!-- ==================== PLAYERS TAB ==================== --%>
-    <div :if={@active_tab == "players"} class="space-y-4">
+    <div :if={@active_tab == "players"} id="panel-players" role="tabpanel" class="space-y-4">
       <div class="border-2 border-[#333]/50 bg-[#0d0d14] p-4">
         <div class="flex items-center justify-between mb-3">
           <div class="text-[10px] tracking-widest text-[#888]">
@@ -165,7 +168,7 @@
     />
 
     <%!-- ==================== RCON TAB ==================== --%>
-    <div :if={@active_tab == "rcon"} class="border-2 border-[#333]/50 bg-[#0d0d14]">
+    <div :if={@active_tab == "rcon"} id="panel-rcon" role="tabpanel" class="border-2 border-[#333]/50 bg-[#0d0d14]">
       <div class="text-[10px] tracking-widest text-[#888] px-4 pt-3 pb-2">RCON TERMINAL</div>
       <div class="bg-[#080810] mx-2 mb-2 h-96 overflow-y-auto p-3 text-xs flex flex-col-reverse border border-[#222]">
         <div :for={{entry, idx} <- Enum.with_index(@rcon_history)} id={"rcon-#{idx}"} class="mb-2">
@@ -196,7 +199,7 @@
     </div>
 
     <%!-- ==================== FX TAB ==================== --%>
-    <div :if={@active_tab == "effects"} class="border-2 border-[#333]/50 bg-[#0d0d14] p-4">
+    <div :if={@active_tab == "effects"} id="panel-effects" role="tabpanel" class="border-2 border-[#333]/50 bg-[#0d0d14] p-4">
       <div class="text-[10px] tracking-widest text-[#888] mb-3">EFFECTS PANEL</div>
       <div class="flex items-center gap-2 mb-4">
         <span class="text-[10px] tracking-wider text-[#666]">TARGET</span>
@@ -223,7 +226,7 @@
     </div>
 
     <%!-- ==================== DISPLAY TAB ==================== --%>
-    <div :if={@active_tab == "display"} class="border-2 border-[#333]/50 bg-[#0d0d14] p-4">
+    <div :if={@active_tab == "display"} id="panel-display" role="tabpanel" class="border-2 border-[#333]/50 bg-[#0d0d14] p-4">
       <div class="text-[10px] tracking-widest text-[#888] mb-3">BLOCK TEXT DISPLAY</div>
       <form phx-submit="place_text" class="space-y-3">
         <input
@@ -262,7 +265,7 @@
     </div>
 
     <%!-- ==================== EVENTS TAB ==================== --%>
-    <div :if={@active_tab == "events"} class="border-2 border-[#333]/50 bg-[#0d0d14]">
+    <div :if={@active_tab == "events"} id="panel-events" role="tabpanel" class="border-2 border-[#333]/50 bg-[#0d0d14]">
       <div class="flex items-center justify-between px-4 pt-3 pb-2">
         <div class="text-[10px] tracking-widest text-[#888]">
           EVENT STREAM <span class="text-[#00ffff]">[{length(@events)}]</span>

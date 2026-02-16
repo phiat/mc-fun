@@ -59,7 +59,7 @@ defmodule McFunWeb.DashboardLive do
 
   @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, active_tab: tab)}
+    {:noreply, socket |> clear_flash() |> assign(active_tab: tab)}
   end
 
   def handle_event("toggle_sidebar", _params, socket) do

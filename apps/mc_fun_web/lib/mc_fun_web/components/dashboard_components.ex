@@ -349,7 +349,7 @@ defmodule McFunWeb.DashboardComponents do
 
   def bot_config_modal(assigns) do
     ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" aria-label={"Configure #{@bot}"}>
       <div class="fixed inset-0" phx-click="close_bot_config"></div>
       <div class="relative z-10 w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-[#0d0d14] border-2 border-[#00ffff]/40 shadow-[0_0_30px_rgba(0,255,255,0.15)]">
         <%!-- Modal header --%>
@@ -365,9 +365,11 @@ defmodule McFunWeb.DashboardComponents do
         </div>
 
         <%!-- Modal tabs --%>
-        <div class="flex border-b border-[#222]">
+        <div class="flex border-b border-[#222]" role="tablist" aria-label="Bot configuration sections">
           <button
             :for={{id, label} <- [{"llm", "LLM"}, {"behavior", "BEHAVIOR"}, {"actions", "ACTIONS"}]}
+            role="tab"
+            aria-selected={to_string(@modal_tab == id)}
             class={"px-4 py-2 text-[10px] tracking-widest border-b-2 transition-all " <>
               if(@modal_tab == id,
                 do: "border-[#00ffff] text-[#00ffff]",
