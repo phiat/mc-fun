@@ -20,10 +20,9 @@ Phoenix LiveView control panel for a Minecraft server. Manage bots, RCON command
 ## Setup
 
 ```bash
-cd mc_fun/
-cp ../.env.example ../.env  # configure RCON_HOST, GROQ_API_KEY, etc.
+cp .env.example .env        # configure RCON_HOST, GROQ_API_KEY, etc.
 mix deps.get
-cd priv/mineflayer && npm install && cd ../..
+cd apps/mc_fun/priv/mineflayer && npm install && cd ../../../..
 mix phx.server              # http://localhost:4000/dashboard
 ```
 
@@ -94,6 +93,27 @@ Phoenix LiveView Dashboard (/dashboard)
 - **FX** — particle/sound effects
 - **DISPLAY** — block text rendering
 - **EVENTS** — real-time event stream
+
+## CLI Tools
+
+```bash
+mix mc.cmd "say hello"      # arbitrary RCON command
+mix mc.players              # list online players
+mix mc.say Hello world!     # broadcast chat message
+mix mc.give Player diamond  # give item to player
+mix mc.tp Player 0 64 0    # teleport player
+mix mc.weather clear        # set weather
+mix mc.time day             # set time of day
+mix mc.status               # system health check
+mix mc.events               # live event watcher (Ctrl+C to stop)
+```
+
+## Testing
+
+```bash
+mix test                                # unit tests (excludes smoke tests)
+mix test apps/mc_fun/test --only smoke  # smoke tests (require live RCON)
+```
 
 ## Tech Stack
 

@@ -14,6 +14,32 @@ mix precommit         # compile --warnings-as-errors, format, credo --strict, te
 
 Dashboard at `/dashboard`. Home page at `/`.
 
+## CLI Tools
+
+```bash
+# Server interaction
+mix mc.cmd "say hello"                  # arbitrary RCON command
+mix mc.players                          # list online players
+mix mc.say Hello world!                 # broadcast chat message
+mix mc.give Player diamond 64           # give item
+mix mc.tp Player 0 64 0                # teleport
+mix mc.weather clear                    # set weather
+mix mc.time day                         # set time
+
+# Observability
+mix mc.status                           # system health check (RCON, players, GenServers)
+mix mc.events                           # live PubSub event watcher (Ctrl+C to stop)
+```
+
+## Testing
+
+```bash
+mix test                                # unit tests (smoke tests excluded by default)
+mix test apps/mc_fun/test --only smoke  # smoke tests (require live RCON connection)
+```
+
+Smoke tests verify RCON connectivity, LogWatcher, EventStore, PubSub, and player data parsing.
+
 ## Project Layout (Umbrella)
 
 ```
@@ -97,6 +123,7 @@ After start: `McFun.Events.Handlers.register_all()` registers default event hand
 - **Bot actions in bridge.js**: dig, dig_looking_at, dig_area, find_and_dig, survey, place, equip, craft, drop, goto, follow, jump, sneak, attack, move, look, chat, whisper, inventory, position, players, quit.
 - **Pathfinder**: mineflayer-pathfinder loaded on spawn, falls back to simple movement if init fails.
 - **LogWatcher**: First poll silently populates player set (no spurious join events on restart).
+- **Player data fetching**: Uses `execute as <player> run data get entity @s` (not `data get entity <player>` which fails on remote). Falls back to per-field queries (Health, Pos, Dimension, foodLevel) if full entity parse returns nil. Logs warnings on failures.
 
 ## Environment
 
