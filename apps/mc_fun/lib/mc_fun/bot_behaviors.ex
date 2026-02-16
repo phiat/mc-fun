@@ -1,6 +1,6 @@
 defmodule McFun.BotBehaviors do
   @moduledoc """
-  Behavior modules for mineflayer bots: patrol, follow, guard.
+  Behavior modules for mineflayer bots: patrol, follow, guard, mine.
 
   Each behavior is a GenServer that controls a bot via McFun.Bot commands
   and listens to bot events for reactive behavior.
@@ -10,6 +10,7 @@ defmodule McFun.BotBehaviors do
       McFun.BotBehaviors.start_patrol("BotName", [{100, 64, 200}, {110, 64, 210}])
       McFun.BotBehaviors.start_follow("BotName", "PlayerName")
       McFun.BotBehaviors.start_guard("BotName", {100, 64, 200}, radius: 10)
+      McFun.BotBehaviors.start_mine("BotName", "iron_ore", max_count: 64)
       McFun.BotBehaviors.stop("BotName")
   """
   use GenServer
@@ -18,6 +19,9 @@ defmodule McFun.BotBehaviors do
   @tick_interval 1_000
   @follow_distance 3
   @guard_radius 8
+  @mine_max_distance 32
+  @stop_poll_attempts 10
+  @stop_poll_interval 20
 
   defstruct [
     :bot_name,
@@ -62,6 +66,23 @@ defmodule McFun.BotBehaviors do
     )
   end
 
+  @doc "Start mining: bot finds and digs blocks of the given type."
+  def start_mine(bot_name, block_type, opts \\ []) when is_binary(block_type) do
+    max_distance = Keyword.get(opts, :max_distance, @mine_max_distance)
+    max_count = Keyword.get(opts, :max_count, :infinity)
+
+    start_behavior(bot_name,
+      bot_name: bot_name,
+      behavior: :mine,
+      params: %{
+        block_type: block_type,
+        max_distance: max_distance,
+        max_count: max_count,
+        mined: 0
+      }
+    )
+  end
+
   @doc "Stop any active behavior for the bot."
   def stop(bot_name) do
     case Registry.lookup(McFun.BotRegistry, {:behavior, bot_name}) do
@@ -86,9 +107,9 @@ defmodule McFun.BotBehaviors do
         {:ok, pid}
 
       {:error, {:already_started, _pid}} ->
-        # Race condition: stop and retry once (no further recursion)
+        # Race condition: stop and poll until Registry clears
         stop(bot_name)
-        Process.sleep(50)
+        await_stopped(bot_name)
         DynamicSupervisor.start_child(McFun.BotSupervisor, {__MODULE__, opts})
 
       error ->
@@ -97,6 +118,20 @@ defmodule McFun.BotBehaviors do
   end
 
   defp via(bot_name), do: {:via, Registry, {McFun.BotRegistry, {:behavior, bot_name}}}
+
+  defp await_stopped(bot_name, attempt \\ 0)
+  defp await_stopped(_bot_name, @stop_poll_attempts), do: :ok
+
+  defp await_stopped(bot_name, attempt) do
+    case Registry.lookup(McFun.BotRegistry, {:behavior, bot_name}) do
+      [] ->
+        :ok
+
+      _ ->
+        Process.sleep(@stop_poll_interval)
+        await_stopped(bot_name, attempt + 1)
+    end
+  end
 
   # GenServer callbacks
 
@@ -147,7 +182,21 @@ defmodule McFun.BotBehaviors do
   end
 
   @impl true
+  def handle_info(
+        {:bot_event, "find_and_dig_done", %{"success" => true}},
+        %{behavior: :mine} = state
+      ) do
+    mined = state.params.mined + 1
+    {:noreply, put_in(state.params.mined, mined)}
+  end
+
+  @impl true
   def handle_info({:bot_event, _, _}, state), do: {:noreply, state}
+
+  @impl true
+  def handle_info(:stop_self, state) do
+    {:stop, :normal, state}
+  end
 
   @impl true
   def handle_info(_msg, state), do: {:noreply, state}
@@ -190,6 +239,27 @@ defmodule McFun.BotBehaviors do
     )
 
     state
+  end
+
+  defp execute_behavior(%{behavior: :mine} = state) do
+    %{block_type: block_type, max_distance: max_distance, max_count: max_count, mined: mined} =
+      state.params
+
+    if max_count != :infinity and mined >= max_count do
+      Logger.info("Mine behavior complete for #{state.bot_name}: mined #{mined}/#{max_count}")
+      McFun.Bot.chat(state.bot_name, "Mining complete! Mined #{mined} blocks.")
+      # Stop self — DynamicSupervisor will clean up
+      send(self(), :stop_self)
+      state
+    else
+      McFun.Bot.send_command(
+        state.bot_name,
+        %{action: "find_and_dig", block_type: block_type, max_distance: max_distance},
+        source: :behavior
+      )
+
+      state
+    end
   end
 
   defp schedule_tick do

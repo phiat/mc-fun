@@ -456,6 +456,7 @@ defmodule McFunWeb.DashboardComponents do
   defp format_behavior(%{behavior: :patrol}), do: "PATROL"
   defp format_behavior(%{behavior: :follow, params: %{target: t}}), do: "FOLLOW #{t}"
   defp format_behavior(%{behavior: :guard}), do: "GUARD"
+  defp format_behavior(%{behavior: :mine, params: %{block_type: b}}), do: "MINE #{b}"
   defp format_behavior(_), do: "ACTIVE"
 
   defp format_inventory(items) when is_list(items) do

@@ -294,6 +294,54 @@ defmodule McFunWeb.BotConfigModalLive do
                 </button>
               </form>
             </div>
+
+            <%!-- Mine --%>
+            <div class="border border-[#222] p-3">
+              <div class="text-[10px] tracking-widest text-[#aa66ff] mb-2">MINE</div>
+              <form
+                id={"mine-form-#{@bot}"}
+                phx-submit="start_behavior_mine"
+                phx-target={@myself}
+                class="space-y-2"
+              >
+                <input type="hidden" name="bot" value={@bot} />
+                <div class="grid grid-cols-3 gap-2">
+                  <div class="col-span-1">
+                    <label class="text-[10px] tracking-wider text-[#666] block mb-0.5">BLOCK</label>
+                    <input
+                      type="text"
+                      name="block_type"
+                      placeholder="coal_ore"
+                      class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
+                    />
+                  </div>
+                  <div>
+                    <label class="text-[10px] tracking-wider text-[#666] block mb-0.5">DIST</label>
+                    <input
+                      type="text"
+                      name="max_distance"
+                      value="32"
+                      class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label class="text-[10px] tracking-wider text-[#666] block mb-0.5">MAX</label>
+                    <input
+                      type="text"
+                      name="max_count"
+                      placeholder="∞"
+                      class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  class="px-4 py-1 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10"
+                >
+                  START MINING
+                </button>
+              </form>
+            </div>
           </div>
 
           <%!-- === ACTIONS TAB === --%>
@@ -593,6 +641,32 @@ defmodule McFunWeb.BotConfigModalLive do
     {:noreply, socket}
   end
 
+  def handle_event("start_behavior_mine", params, socket) do
+    bot = params["bot"]
+    block_type = params["block_type"] || ""
+
+    if block_type == "" do
+      notify_parent(socket, {:flash, :error, "Enter a block type (e.g. coal_ore)"})
+      {:noreply, socket}
+    else
+      max_distance = safe_int(params["max_distance"] || "32")
+
+      opts = [max_distance: max_distance]
+
+      opts =
+        case params["max_count"] do
+          nil -> opts
+          "" -> opts
+          val -> Keyword.put(opts, :max_count, safe_int(val))
+        end
+
+      McFun.BotBehaviors.start_mine(bot, block_type, opts)
+      notify_parent(socket, {:flash, :info, "#{bot} mining #{block_type}"})
+      notify_parent(socket, :refresh_bot_statuses)
+      {:noreply, socket}
+    end
+  end
+
   def handle_event("toggle_heartbeat", %{"bot" => bot, "enabled" => enabled}, socket) do
     enabled? = enabled == "true"
 
@@ -639,6 +713,7 @@ defmodule McFunWeb.BotConfigModalLive do
   defp format_behavior(%{behavior: :patrol}), do: "PATROL"
   defp format_behavior(%{behavior: :follow, params: %{target: t}}), do: "FOLLOW #{t}"
   defp format_behavior(%{behavior: :guard}), do: "GUARD"
+  defp format_behavior(%{behavior: :mine, params: %{block_type: b}}), do: "MINE #{b}"
   defp format_behavior(_), do: "ACTIVE"
 
   defp guard_default(%{position: {x, _y, _z}}, :x, _fallback) when is_number(x),
