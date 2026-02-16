@@ -164,16 +164,25 @@ defmodule McFun.Bot do
 
   @impl true
   def handle_call({:command, command}, _from, state) do
-    json = Jason.encode!(command) <> "\n"
-    Port.command(state.port, json)
-    {:reply, :ok, state}
+    if state.port && Port.info(state.port) do
+      json = Jason.encode!(command) <> "\n"
+      Port.command(state.port, json)
+      {:reply, :ok, state}
+    else
+      Logger.warning("Bot #{state.name}: port dead, can't send command")
+      {:reply, {:error, :port_dead}, state}
+    end
   end
 
   @impl true
   def handle_call({:survey}, from, state) do
-    json = Jason.encode!(%{action: "survey"}) <> "\n"
-    Port.command(state.port, json)
-    {:noreply, %{state | listeners: [{:survey, from} | state.listeners]}}
+    if state.port && Port.info(state.port) do
+      json = Jason.encode!(%{action: "survey"}) <> "\n"
+      Port.command(state.port, json)
+      {:noreply, %{state | listeners: [{:survey, from} | state.listeners]}}
+    else
+      {:reply, {:error, :port_dead}, state}
+    end
   end
 
   @impl true
@@ -232,7 +241,13 @@ defmodule McFun.Bot do
   @impl true
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
     Logger.warning("Bot #{state.name} bridge exited with status #{status}")
-    {:stop, {:bridge_exit, status}, state}
+    {:stop, {:bridge_exit, status}, %{state | port: nil}}
+  end
+
+  @impl true
+  def terminate(_reason, state) do
+    if state.port && Port.info(state.port), do: Port.close(state.port)
+    :ok
   end
 
   defp update_state_from_event(state, %{"event" => "spawn", "position" => pos} = event) do

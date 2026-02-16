@@ -86,8 +86,9 @@ defmodule McFun.BotBehaviors do
         {:ok, pid}
 
       {:error, {:already_started, _pid}} ->
-        # Race condition: another concurrent start won. Stop that one and retry once.
+        # Race condition: stop and retry once (no further recursion)
         stop(bot_name)
+        Process.sleep(50)
         DynamicSupervisor.start_child(McFun.BotSupervisor, {__MODULE__, opts})
 
       error ->

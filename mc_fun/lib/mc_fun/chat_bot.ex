@@ -146,7 +146,13 @@ defmodule McFun.ChatBot do
     # Execute tool calls
     for %{name: name, args: args} <- tool_calls do
       Logger.info("ChatBot #{state.bot_name}: tool call #{name}(#{inspect(args)})")
-      execute_tool(state.bot_name, name, args, username)
+
+      try do
+        execute_tool(state.bot_name, name, args, username)
+      catch
+        kind, reason ->
+          Logger.warning("ChatBot #{state.bot_name}: tool #{name} failed: #{kind} #{inspect(reason)}")
+      end
     end
 
     state = add_bot_response(state, username, response)
