@@ -8,72 +8,75 @@ The MC server runs remotely on **miniwini-1** (Incus/LXC container named `minecr
 ## Running
 
 ```bash
-cd mc_fun/
-mix phx.server        # starts on http://localhost:4000
+mix phx.server        # starts on http://localhost:4000 (from repo root)
 mix precommit         # compile --warnings-as-errors, format, credo --strict, test
 ```
 
 Dashboard at `/dashboard`. Home page at `/`.
 
-## Project Layout
+## Project Layout (Umbrella)
 
 ```
-mc_fun/
-├── lib/mc_fun/                  # Core domain
-│   ├── application.ex           # Supervision tree
-│   ├── rcon.ex                  # RCON GenServer (crashes on auth fail — intentional)
-│   ├── bot.ex                   # Mineflayer bot via Erlang Port + bridge.js (JSON over stdin/stdout)
-│   ├── chat_bot.ex              # LLM chat — !ask/!model/!models/!personality/!reset/!tp
-│   ├── action_parser.ex          # Regex-based LLM response → bot action translator
-│   ├── bot_behaviors.ex         # Patrol/follow/guard behaviors (1s tick GenServers)
-│   ├── bot_supervisor.ex        # DynamicSupervisor wrapper for bots
-│   ├── presets.ex               # 22 bot personality presets across 6 categories
-│   ├── log_watcher.ex           # RCON-polling log watcher (no local log file)
-│   ├── events.ex                # PubSub event system
-│   ├── events/handlers.ex       # Default event handler registration
-│   ├── events/callback_handler.ex
-│   ├── event_store.ex           # In-memory event store (recent events)
-│   ├── effects.ex               # MC effects (celebration, welcome, death, firework, etc.)
-│   ├── display.ex               # Block text rendering in-world
-│   ├── display/block_font.ex    # Font definitions for block text
-│   ├── music.ex                 # Music/sound via RCON
-│   ├── redstone.ex              # Redstone circuit helpers
-│   ├── redstone/executor.ex
-│   ├── redstone/circuit_registry.ex
-│   └── llm/
-│       ├── groq.ex              # Groq API client (Req-based)
-│       └── model_cache.ex       # ETS + disk cache of available Groq models
-├── lib/mc_fun_web/
-│   ├── router.ex                # / (home), /dashboard (LiveView), /api/webhooks/:action
-│   ├── live/dashboard_live.ex   # Main UI — tabs: UNITS, PLAYERS, RCON, FX, DISPLAY, EVENTS
-│   ├── controllers/
-│   │   ├── page_controller.ex
-│   │   ├── webhook_controller.ex
-│   │   └── error_*.ex
-│   └── components/
-│       ├── core_components.ex
-│       └── layouts.ex
-└── priv/mineflayer/bridge.js    # Node.js mineflayer bridge (Erlang Port protocol)
+mc-fun/                              # repo root = umbrella root
+├── mix.exs                          # umbrella mix.exs
+├── config/                          # shared config
+├── apps/
+│   ├── mc_fun/                      # engine app — bot runtime, RCON, LLM, events
+│   │   ├── lib/mc_fun/
+│   │   │   ├── application.ex       # engine supervisor (PubSub, Rcon, bots, etc.)
+│   │   │   ├── rcon.ex              # RCON GenServer (crashes on auth fail — intentional)
+│   │   │   ├── bot.ex               # Mineflayer bot via Erlang Port + bridge.js
+│   │   │   ├── chat_bot.ex          # LLM chat — !ask/!model/!models/!personality/!reset/!tp
+│   │   │   ├── action_parser.ex     # Regex-based LLM response → bot action translator
+│   │   │   ├── bot_behaviors.ex     # Patrol/follow/guard behaviors (1s tick GenServers)
+│   │   │   ├── bot_supervisor.ex    # DynamicSupervisor wrapper for bots
+│   │   │   ├── presets.ex           # 22 bot personality presets across 6 categories
+│   │   │   ├── log_watcher.ex       # RCON-polling log watcher (no local log file)
+│   │   │   ├── events.ex            # PubSub event system
+│   │   │   ├── events/handlers.ex   # Default event handler registration
+│   │   │   ├── event_store.ex       # In-memory event store
+│   │   │   ├── effects.ex           # MC effects (celebration, welcome, death, firework)
+│   │   │   ├── display.ex           # Block text rendering in-world
+│   │   │   ├── music.ex             # Music/sound via RCON
+│   │   │   ├── redstone.ex          # Redstone circuit helpers
+│   │   │   └── llm/                 # Groq API client + model cache
+│   │   └── priv/mineflayer/bridge.js # Node.js mineflayer bridge
+│   │
+│   └── mc_fun_web/                  # web app — Phoenix, LiveView, dashboard
+│       ├── lib/mc_fun_web/
+│       │   ├── application.ex       # web supervisor (Telemetry, DNSCluster, Endpoint)
+│       │   ├── endpoint.ex
+│       │   ├── router.ex            # / (home), /dashboard (LiveView), /api/webhooks/:action
+│       │   ├── live/dashboard_live.ex  # Main UI — tabs: UNITS, PLAYERS, RCON, FX, DISPLAY, EVENTS
+│       │   ├── controllers/
+│       │   └── components/
+│       ├── priv/static/
+│       └── assets/
+└── .env                             # secrets (GROQ_API_KEY, RCON_PASSWORD, etc.)
 ```
 
-## Supervision Tree (application.ex)
+## Supervision Trees
 
+**McFun.Supervisor** (engine — `apps/mc_fun`):
 ```
-McFun.Supervisor (one_for_one)
-├── McFunWeb.Telemetry
-├── DNSCluster
 ├── Phoenix.PubSub (name: McFun.PubSub)
-├── McFun.Rcon                      # RCON GenServer
+├── McFun.Rcon
 ├── McFun.Redstone.CircuitRegistry
 ├── McFun.LLM.ModelCache            # ETS + disk cache
 ├── McFun.EventStore
 ├── McFun.LogWatcher                # Polls RCON for player list
-├── Registry (McFun.BotRegistry)    # Unique keys: bot_name, {:chat_bot, name}, {:behavior, name}
-├── DynamicSupervisor (McFun.BotSupervisor)  # Bots, ChatBots, BotBehaviors
-└── McFunWeb.Endpoint
+├── Registry (McFun.BotRegistry)
+└── DynamicSupervisor (McFun.BotSupervisor)
 ```
 
 After start: `McFun.Events.Handlers.register_all()` registers default event handlers.
+
+**McFunWeb.Supervisor** (web — `apps/mc_fun_web`):
+```
+├── McFunWeb.Telemetry
+├── DNSCluster
+└── McFunWeb.Endpoint
+```
 
 ## Key Patterns
 
@@ -97,9 +100,8 @@ After start: `McFun.Events.Handlers.register_all()` registers default event hand
 
 ## Environment
 
-- `.env` in project root (`mc-fun/.env`) — real secrets (GROQ_API_KEY, RCON_PASSWORD, etc.)
-- `.env` in `mc_fun/.env` — local overrides (RCON_HOST, MC_HOST point to miniwini-1)
-- `runtime.exs` loads: `.env` → `../.env` → system env (via Dotenvy)
+- `.env` in repo root — all secrets and config (GROQ_API_KEY, RCON_PASSWORD, RCON_HOST, MC_HOST, etc.)
+- `runtime.exs` loads: `.env` → system env (via Dotenvy)
 - NEVER delete .env files without reading them first
 - Groq API key starts with `gsk_`
 
@@ -124,9 +126,9 @@ incus exec minecraft -- <cmd>           # run command in MC container
 
 ## Gotchas
 
-- The `mc-fun/mc_fun/` nesting is confusing — Phoenix app is in the inner `mc_fun/`
 - `docker-compose.yml` in repo root is for LOCAL dev only, not the primary server
 - RCON GenServer crashes the app if auth fails — this is intentional (fail fast)
 - `BotSupervisor.list_bots/0` filters registry to binary-only keys to exclude tuples like `{:chat_bot, name}`
 - Default LLM model: `openai/gpt-oss-20b` (via Groq)
 - `mix precommit` runs compile (warnings-as-errors), deps.unlock --unused, format, credo --strict, test
+- All config keys use `:mc_fun` OTP app name (both engine and web config)

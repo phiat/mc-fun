@@ -3,7 +3,7 @@ import Config
 # Load .env file — Dotenvy.source! returns a merged map, doesn't set system env
 env =
   if config_env() in [:dev, :test] do
-    Dotenvy.source!([".env", "../.env", System.get_env()])
+    Dotenvy.source!([".env", System.get_env()])
   else
     System.get_env()
   end
