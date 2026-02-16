@@ -41,6 +41,15 @@ prometheus:
         scrape_interval: 15s
         metrics_path: /metrics
 
+      - job_name: minecraft-node
+        static_configs:
+          - targets: ["MC_CONTAINER_IP:9100"]
+            labels:
+              instance: minecraft
+              service: system
+        scrape_interval: 15s
+        metrics_path: /metrics
+
 # ─── Grafana ──────────────────────────────────────────────────
 
 grafana:
@@ -58,9 +67,6 @@ grafana:
       memory: 256Mi
 
   persistence:
-    enabled: false
-
-  initChownData:
     enabled: false
 
   initChownData:

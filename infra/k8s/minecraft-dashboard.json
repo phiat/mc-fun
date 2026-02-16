@@ -355,6 +355,162 @@
           "custom": { "fillOpacity": 10 }
         }
       }
+    },
+    {
+      "title": "--- Container System Metrics ---",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 },
+      "collapsed": false
+    },
+    {
+      "title": "Container CPU Usage",
+      "description": "CPU usage across all cores in the MC container",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
+      "targets": [
+        {
+          "expr": "sum(rate(node_cpu_seconds_total{job=\"minecraft-node\",mode!=\"idle\"}[1m])) / count(node_cpu_seconds_total{job=\"minecraft-node\",mode=\"idle\"}) * 100",
+          "legendFormat": "CPU %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": { "fillOpacity": 10 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 70, "color": "yellow" },
+              { "value": 90, "color": "red" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Container Memory",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 45 },
+      "targets": [
+        {
+          "expr": "node_memory_MemTotal_bytes{job=\"minecraft-node\"} - node_memory_MemAvailable_bytes{job=\"minecraft-node\"}",
+          "legendFormat": "Used",
+          "refId": "A"
+        },
+        {
+          "expr": "node_memory_MemTotal_bytes{job=\"minecraft-node\"}",
+          "legendFormat": "Total",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "title": "Disk Usage (World Data)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 53 },
+      "targets": [
+        {
+          "expr": "node_filesystem_size_bytes{job=\"minecraft-node\",mountpoint=\"/\"} - node_filesystem_avail_bytes{job=\"minecraft-node\",mountpoint=\"/\"}",
+          "legendFormat": "Used",
+          "refId": "A"
+        },
+        {
+          "expr": "node_filesystem_size_bytes{job=\"minecraft-node\",mountpoint=\"/\"}",
+          "legendFormat": "Total",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "title": "Network I/O",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 53 },
+      "targets": [
+        {
+          "expr": "rate(node_network_receive_bytes_total{job=\"minecraft-node\",device=\"eth0\"}[1m])",
+          "legendFormat": "Receive",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(node_network_transmit_bytes_total{job=\"minecraft-node\",device=\"eth0\"}[1m])",
+          "legendFormat": "Transmit",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": { "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "title": "Disk I/O",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 61 },
+      "targets": [
+        {
+          "expr": "rate(node_disk_read_bytes_total{job=\"minecraft-node\"}[1m])",
+          "legendFormat": "Read {{ device }}",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(node_disk_written_bytes_total{job=\"minecraft-node\"}[1m])",
+          "legendFormat": "Write {{ device }}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": { "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "title": "Network Connections",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 61 },
+      "targets": [
+        {
+          "expr": "node_netstat_Tcp_CurrEstab{job=\"minecraft-node\"}",
+          "legendFormat": "Established",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Container Load Average",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 61 },
+      "targets": [
+        {
+          "expr": "node_load1{job=\"minecraft-node\"}",
+          "legendFormat": "1m",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2
+        }
+      }
     }
   ],
   "schemaVersion": 39,
