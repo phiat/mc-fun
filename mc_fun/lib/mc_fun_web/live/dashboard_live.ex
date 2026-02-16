@@ -16,6 +16,7 @@ defmodule McFunWeb.DashboardLive do
         Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{bot}")
       end
 
+      Phoenix.PubSub.subscribe(McFun.PubSub, "player_statuses")
       :timer.send_interval(5_000, self(), :refresh_status)
     end
 
@@ -42,6 +43,7 @@ defmodule McFunWeb.DashboardLive do
         display_z: "0",
         display_block: "diamond_block",
         online_players: [],
+        player_statuses: %{},
         rcon_status: check_rcon(),
         active_tab: "bots",
         sidebar_open: true,
@@ -450,7 +452,14 @@ defmodule McFunWeb.DashboardLive do
           _, _ -> []
         end
 
-      send(lv, {:status_update, players})
+      player_data =
+        try do
+          McFun.LogWatcher.player_statuses()
+        catch
+          _, _ -> %{}
+        end
+
+      send(lv, {:status_update, players, player_data})
     end)
 
     models = safe_model_ids()
@@ -473,8 +482,20 @@ defmodule McFunWeb.DashboardLive do
   end
 
   @impl true
-  def handle_info({:status_update, players}, socket) do
-    {:noreply, assign(socket, online_players: players)}
+  def handle_info({:status_update, players, player_data}, socket) do
+    {:noreply, assign(socket, online_players: players, player_statuses: player_data)}
+  end
+
+  @impl true
+  def handle_info(:player_statuses_updated, socket) do
+    player_data =
+      try do
+        McFun.LogWatcher.player_statuses()
+      catch
+        _, _ -> %{}
+      end
+
+    {:noreply, assign(socket, player_statuses: player_data)}
   end
 
   @impl true

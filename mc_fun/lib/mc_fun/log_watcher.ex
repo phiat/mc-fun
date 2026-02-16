@@ -42,6 +42,11 @@ defmodule McFun.LogWatcher do
     GenServer.call(__MODULE__, :online_players)
   end
 
+  @doc "Get player data (health, food, position, dimension) for all online players."
+  def player_statuses do
+    GenServer.call(__MODULE__, :player_statuses)
+  end
+
   # GenServer callbacks
 
   @impl true
@@ -57,6 +62,7 @@ defmodule McFun.LogWatcher do
       poll_interval: poll_interval,
       mode: :rcon,
       online_players: MapSet.new(),
+      player_data: %{},
       first_poll: true
     }
 
@@ -72,6 +78,11 @@ defmodule McFun.LogWatcher do
   @impl true
   def handle_call(:online_players, _from, state) do
     {:reply, MapSet.to_list(state.online_players), state}
+  end
+
+  @impl true
+  def handle_call(:player_statuses, _from, state) do
+    {:reply, state.player_data, state}
   end
 
   @impl true
@@ -97,7 +108,8 @@ defmodule McFun.LogWatcher do
       {:ok, response} ->
         current_set = response |> parse_player_list() |> MapSet.new()
         Logger.info("LogWatcher: initial poll found #{MapSet.size(current_set)} players online")
-        %{state | online_players: current_set, first_poll: false}
+        state = %{state | online_players: current_set, first_poll: false}
+        fetch_player_data(state)
 
       {:error, reason} ->
         Logger.debug("LogWatcher RCON poll failed: #{inspect(reason)}")
@@ -128,11 +140,88 @@ defmodule McFun.LogWatcher do
           })
         end
 
-        %{state | online_players: current_set}
+        state = %{state | online_players: current_set}
+        fetch_player_data(state)
 
       {:error, reason} ->
         Logger.debug("LogWatcher RCON poll failed: #{inspect(reason)}")
         state
+    end
+  end
+
+  defp fetch_player_data(%{online_players: players} = state) do
+    player_list = MapSet.to_list(players)
+
+    if player_list == [] do
+      if state.player_data != %{} do
+        Phoenix.PubSub.broadcast(McFun.PubSub, "player_statuses", :player_statuses_updated)
+      end
+
+      %{state | player_data: %{}}
+    else
+      new_data =
+        for player <- player_list, into: %{} do
+          data = fetch_single_player_data(player)
+          {player, data}
+        end
+
+      if new_data != state.player_data do
+        Phoenix.PubSub.broadcast(McFun.PubSub, "player_statuses", :player_statuses_updated)
+      end
+
+      %{state | player_data: new_data}
+    end
+  end
+
+  defp fetch_single_player_data(player) do
+    case McFun.Rcon.command("data get entity #{player}") do
+      {:ok, response} -> parse_entity_data(response)
+      {:error, _} -> %{health: nil, food: nil, position: nil, dimension: nil}
+    end
+  end
+
+  defp parse_entity_data(response) do
+    health =
+      case Regex.run(~r/Health:([\d.]+)f/, response) do
+        [_, val] -> String.to_float(val)
+        nil -> nil
+      end
+
+    food =
+      case Regex.run(~r/foodLevel:(\d+)/, response) do
+        [_, val] -> String.to_integer(val)
+        nil -> nil
+      end
+
+    position =
+      case Regex.run(~r/Pos:\[([-\d.]+)d,([-\d.]+)d,([-\d.]+)d\]/, response) do
+        [_, x, y, z] ->
+          {String.to_float(x), String.to_float(y), String.to_float(z)}
+
+        nil ->
+          # Try without 'd' suffix (some versions)
+          case Regex.run(~r/Pos:\s*\[([-\d.]+)d?,\s*([-\d.]+)d?,\s*([-\d.]+)d?\]/, response) do
+            [_, x, y, z] ->
+              {parse_float(x), parse_float(y), parse_float(z)}
+
+            nil ->
+              nil
+          end
+      end
+
+    dimension =
+      case Regex.run(~r/Dimension:"minecraft:(\w+)"/, response) do
+        [_, dim] -> dim
+        nil -> nil
+      end
+
+    %{health: health, food: food, position: position, dimension: dimension}
+  end
+
+  defp parse_float(str) do
+    case Float.parse(str) do
+      {f, _} -> f
+      :error -> 0.0
     end
   end
 

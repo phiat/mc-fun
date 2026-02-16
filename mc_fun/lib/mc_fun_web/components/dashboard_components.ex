@@ -267,6 +267,78 @@ defmodule McFunWeb.DashboardComponents do
     """
   end
 
+  # --- Player Card ---
+
+  attr :name, :string, required: true
+  attr :data, :map, required: true
+
+  def player_card(assigns) do
+    ~H"""
+    <div class="border border-[#333] bg-[#111] p-3 hover:border-[#00ff88]/40 transition-all">
+      <%!-- Player header --%>
+      <div class="flex items-center gap-2 mb-2">
+        <div class="w-1.5 h-1.5 bg-[#00ff88] shadow-[0_0_4px_#00ff88]" />
+        <span class="text-sm font-bold text-[#e0e0e0]">{@name}</span>
+      </div>
+
+      <div class="text-[10px] tracking-wider space-y-1 text-[#888]">
+        <%!-- Health --%>
+        <%= if @data.health do %>
+          <div class="flex items-center justify-between">
+            <span>HP</span>
+            <div class="flex items-center gap-1">
+              <div class="w-20 h-1.5 bg-[#222] overflow-hidden">
+                <div
+                  class="h-full bg-[#ff4444] shadow-[0_0_4px_#ff4444]"
+                  style={"width: #{min(100, (@data.health || 0) / 20 * 100)}%"}
+                />
+              </div>
+              <span class="text-[#ff4444]">{trunc(@data.health)}/20</span>
+            </div>
+          </div>
+        <% end %>
+        <%!-- Food --%>
+        <%= if @data.food do %>
+          <div class="flex items-center justify-between">
+            <span>FOOD</span>
+            <div class="flex items-center gap-1">
+              <div class="w-20 h-1.5 bg-[#222] overflow-hidden">
+                <div
+                  class="h-full bg-[#ffaa00] shadow-[0_0_4px_#ffaa00]"
+                  style={"width: #{min(100, (@data.food || 0) / 20 * 100)}%"}
+                />
+              </div>
+              <span class="text-[#ffaa00]">{@data.food}/20</span>
+            </div>
+          </div>
+        <% end %>
+        <%!-- Position --%>
+        <%= if @data.position do %>
+          <div class="flex justify-between">
+            <span>POS</span>
+            <span class="text-[#888]">
+              <%= with {x, y, z} <- @data.position do %>
+                X:<span class="text-[#e0e0e0]">{trunc(x)}</span> Y:<span class="text-[#e0e0e0]">{trunc(y)}</span> Z:<span class="text-[#e0e0e0]">{trunc(z)}</span>
+              <% end %>
+            </span>
+          </div>
+        <% end %>
+        <%!-- Dimension --%>
+        <%= if @data.dimension do %>
+          <div class="flex justify-between">
+            <span>DIM</span>
+            <span class="text-[#aa66ff]">{String.upcase(@data.dimension)}</span>
+          </div>
+        <% end %>
+        <%!-- Fallback if no data --%>
+        <%= if is_nil(@data.health) and is_nil(@data.position) do %>
+          <div class="text-[#444]">Loading data...</div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
   # --- Bot Config Modal ---
 
   attr :bot, :string, required: true
@@ -615,8 +687,14 @@ defmodule McFunWeb.DashboardComponents do
   defp format_behavior(%{behavior: :guard}), do: "GUARD"
   defp format_behavior(_), do: "ACTIVE"
 
-  defp guard_default(%{position: {x, _y, _z}}, :x, _fallback) when is_number(x), do: to_string(trunc(x))
-  defp guard_default(%{position: {_x, y, _z}}, :y, _fallback) when is_number(y), do: to_string(trunc(y))
-  defp guard_default(%{position: {_x, _y, z}}, :z, _fallback) when is_number(z), do: to_string(trunc(z))
+  defp guard_default(%{position: {x, _y, _z}}, :x, _fallback) when is_number(x),
+    do: to_string(trunc(x))
+
+  defp guard_default(%{position: {_x, y, _z}}, :y, _fallback) when is_number(y),
+    do: to_string(trunc(y))
+
+  defp guard_default(%{position: {_x, _y, z}}, :z, _fallback) when is_number(z),
+    do: to_string(trunc(z))
+
   defp guard_default(_, _, fallback), do: fallback
 end
