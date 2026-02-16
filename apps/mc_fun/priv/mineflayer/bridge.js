@@ -200,9 +200,14 @@ function createBot() {
   });
 
   bot.on('kicked', (reason) => {
-    send({ event: 'kicked', reason: reason.toString() });
-    log(`Kicked: ${reason}`);
-    // Kicked bots may be able to rejoin — trigger reconnect
+    const reasonStr = reason.toString();
+    send({ event: 'kicked', reason: reasonStr });
+    log(`Kicked: ${reasonStr}`);
+    // Fatal kicks — don't retry
+    if (/not whitelisted|banned/i.test(reasonStr)) {
+      log('Fatal kick reason — not retrying');
+      process.exit(1);
+    }
     scheduleReconnect('kicked');
   });
 
@@ -373,15 +378,19 @@ function executeCommand(cmd) {
       break;
 
     case 'position':
-      send({
-        event: 'position',
-        x: bot.entity.position.x,
-        y: bot.entity.position.y,
-        z: bot.entity.position.z,
-        yaw: bot.entity.yaw,
-        pitch: bot.entity.pitch,
-        dimension: bot.game && bot.game.dimension,
-      });
+      if (!bot.entity) {
+        send({ event: 'position', error: 'not_spawned' });
+      } else {
+        send({
+          event: 'position',
+          x: bot.entity.position.x,
+          y: bot.entity.position.y,
+          z: bot.entity.position.z,
+          yaw: bot.entity.yaw,
+          pitch: bot.entity.pitch,
+          dimension: bot.game && bot.game.dimension,
+        });
+      }
       break;
 
     case 'players':
