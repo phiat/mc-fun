@@ -13,7 +13,8 @@ defmodule McFunWeb.UnitsPanelLive do
      end)
      |> assign_new(:selected_preset, fn -> nil end)
      |> assign_new(:deploy_personality, fn -> default_personality() end)
-     |> assign_new(:pending_card_models, fn -> %{} end)}
+     |> assign_new(:pending_card_models, fn -> %{} end)
+     |> assign_new(:failed_bots, fn -> %{} end)}
   end
 
   @impl true
@@ -29,6 +30,37 @@ defmodule McFunWeb.UnitsPanelLive do
         bot_spawn_name={@bot_spawn_name}
         target={@myself}
       />
+
+      <%!-- Failed Bots --%>
+      <div
+        :for={{bot_name, reason} <- @failed_bots}
+        class="border-2 border-[#ff4444]/40 bg-[#1a0a0a] p-4 flex items-center justify-between"
+      >
+        <div>
+          <span class="text-sm font-bold text-[#ff4444]">{bot_name}</span>
+          <span class="text-[10px] text-[#888] ml-2 tracking-wider">KICKED: {reason}</span>
+        </div>
+        <div class="flex gap-2">
+          <%= if String.contains?(String.downcase(reason), "not whitelisted") do %>
+            <button
+              phx-click="whitelist_and_deploy"
+              phx-target={@myself}
+              phx-value-name={bot_name}
+              class="px-4 py-1.5 border-2 border-[#00ff88] text-[#00ff88] text-[10px] tracking-widest hover:bg-[#00ff88]/10 transition-all"
+            >
+              WHITELIST &amp; DEPLOY
+            </button>
+          <% end %>
+          <button
+            phx-click="dismiss_failed"
+            phx-target={@myself}
+            phx-value-name={bot_name}
+            class="px-3 py-1.5 border border-[#444] text-[#666] text-[10px] tracking-widest hover:text-[#aaa] transition-all"
+          >
+            DISMISS
+          </button>
+        </div>
+      </div>
 
       <%!-- Active Units --%>
       <div class="border-2 border-[#333]/50 bg-[#0d0d14] p-4">
@@ -145,6 +177,44 @@ defmodule McFunWeb.UnitsPanelLive do
   end
 
   def handle_event("deploy_bot", _, socket), do: {:noreply, socket}
+
+  # --- Failed Bot Actions ---
+
+  def handle_event("whitelist_and_deploy", %{"name" => name}, socket) do
+    Task.start(fn ->
+      parent = socket.assigns.parent_pid
+      result = McFun.Rcon.command("whitelist add #{name}")
+      send(parent, {:flash, :info, "Whitelist: #{result}"})
+      send(parent, {:clear_failed, name})
+    end)
+
+    # Re-deploy after a short delay for whitelist to take effect
+    model = socket.assigns.selected_model
+    personality = socket.assigns.deploy_personality
+
+    Task.start(fn ->
+      Process.sleep(500)
+      parent = socket.assigns.parent_pid
+
+      case McFun.BotSupervisor.spawn_bot(name) do
+        {:ok, _pid} ->
+          Process.sleep(2_000)
+          ensure_chatbot(name, model, personality)
+          send(parent, {:flash, :info, "#{name} deployed after whitelist"})
+          send(parent, :refresh_bots)
+
+        {:error, reason} ->
+          send(parent, {:flash, :error, "Deploy failed: #{inspect(reason)}"})
+      end
+    end)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("dismiss_failed", %{"name" => name}, socket) do
+    notify_parent(socket, {:clear_failed, name})
+    {:noreply, socket}
+  end
 
   # --- Bot Card Actions ---
 

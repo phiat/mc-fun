@@ -50,6 +50,7 @@ defmodule McFunWeb.DashboardLive do
         subscribed_bots: MapSet.new(initial_bots),
         cost_summary: McFun.CostTracker.get_global_cost(),
         server_health: server_health(),
+        failed_bots: %{},
         # Bot config modal
         selected_bot: nil,
         modal_tab: "llm"
@@ -113,6 +114,11 @@ defmodule McFunWeb.DashboardLive do
   @impl true
   def handle_info(:refresh_bot_statuses, socket) do
     {:noreply, assign(socket, bot_statuses: build_bot_statuses())}
+  end
+
+  @impl true
+  def handle_info({:clear_failed, bot_name}, socket) do
+    {:noreply, assign(socket, failed_bots: Map.delete(socket.assigns.failed_bots, bot_name))}
   end
 
   @impl true
@@ -213,6 +219,28 @@ defmodule McFunWeb.DashboardLive do
     entry = %{cmd: cmd, result: strip_mc_formatting(result), at: DateTime.utc_now()}
     history = [entry | Enum.take(socket.assigns.rcon_history, 49)]
     {:noreply, assign(socket, rcon_history: history)}
+  end
+
+  @impl true
+  def handle_info(
+        {:bot_event, bot_name, %{"event" => "kicked", "reason" => reason} = event_data},
+        socket
+      ) do
+    event = %{
+      type: :bot_kicked,
+      data: Map.put(event_data, "bot", bot_name),
+      at: DateTime.utc_now()
+    }
+
+    McFun.EventStore.push(event)
+    events = [event | Enum.take(socket.assigns.events, 199)]
+
+    failed = Map.put(socket.assigns.failed_bots, bot_name, reason)
+
+    {:noreply,
+     socket
+     |> assign(events: events, failed_bots: failed)
+     |> put_flash(:error, "#{bot_name} kicked: #{reason}")}
   end
 
   @impl true
