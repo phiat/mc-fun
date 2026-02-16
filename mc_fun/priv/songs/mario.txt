@@ -1,4 +1,0 @@
-# Super Mario Bros Theme (simplified)
-E5:e E5:e R:e E5:e R:e C5:e E5:q
-G5:h R:h
-G4:h R:h
