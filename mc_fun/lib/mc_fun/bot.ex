@@ -92,6 +92,26 @@ defmodule McFun.Bot do
     send_command(bot_name, %{action: "find_and_dig", block_type: block_type})
   end
 
+  @doc "Dig a rectangular area. Args: width, height, depth (uses bot's current position as origin)."
+  def dig_area(bot_name, args) when is_map(args) do
+    # Get bot's current position for the origin
+    case status(bot_name) do
+      %{position: {x, y, z}} when is_number(x) ->
+        send_command(bot_name, %{
+          action: "dig_area",
+          x: trunc(x),
+          y: trunc(y),
+          z: trunc(z),
+          width: args["width"] || 5,
+          height: args["height"] || 3,
+          depth: args["depth"] || 5
+        })
+
+      _ ->
+        Logger.warning("Bot #{bot_name}: can't dig_area, no position")
+    end
+  end
+
   @doc "Subscribe the calling process to events from this bot."
   def subscribe(bot_name) do
     Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{bot_name}")

@@ -515,6 +515,79 @@ function handleCommand(cmd) {
       break;
     }
 
+    case 'dig_area': {
+      // Dig a rectangular area. Params: x, y, z (corner), width, height, depth
+      // Digs from top-down, layer by layer
+      const { x: ax, y: ay, z: az, width: aw, height: ah, depth: ad } = cmd;
+      const w = Math.min(aw || 5, 20);
+      const h = Math.min(ah || 3, 10);
+      const d = Math.min(ad || 5, 20);
+
+      const blocks = [];
+      // Top-down so bot doesn't fall into holes
+      for (let dy = h - 1; dy >= 0; dy--) {
+        for (let dx = 0; dx < w; dx++) {
+          for (let dz = 0; dz < d; dz++) {
+            blocks.push({ x: ax + dx, y: ay + dy, z: az + dz });
+          }
+        }
+      }
+
+      send({ event: 'ack', action: 'dig_area', message: `Starting to dig ${w}x${h}x${d} area (${blocks.length} blocks)` });
+
+      async function digNext(idx) {
+        if (idx >= blocks.length) {
+          send({ event: 'ack', action: 'dig_area', message: `Done! Dug ${blocks.length} blocks.` });
+          return;
+        }
+        const pos = blocks[idx];
+        const block = bot.blockAt(new Vec3(pos.x, pos.y, pos.z));
+        if (!block || block.name === 'air' || block.name === 'cave_air') {
+          // Skip air blocks
+          digNext(idx + 1);
+          return;
+        }
+
+        // Pathfind close enough to dig
+        const dist = bot.entity.position.distanceTo(new Vec3(pos.x, pos.y, pos.z));
+        if (dist > 4.5 && bot.pathfinder && bot.pathfinder.movements) {
+          try {
+            bot.pathfinder.setGoal(new GoalNear(pos.x, pos.y, pos.z, 3));
+            await new Promise((resolve, reject) => {
+              const timeout = setTimeout(() => {
+                bot.pathfinder.setGoal(null);
+                resolve();
+              }, 10000);
+              bot.once('goal_reached', () => { clearTimeout(timeout); resolve(); });
+            });
+          } catch (e) {
+            log(`dig_area: pathfind error at ${pos.x},${pos.y},${pos.z}: ${e.message}`);
+          }
+        }
+
+        // Dig the block
+        const current = bot.blockAt(new Vec3(pos.x, pos.y, pos.z));
+        if (current && current.name !== 'air' && current.name !== 'cave_air') {
+          try {
+            await bot.dig(current);
+          } catch (e) {
+            log(`dig_area: dig error at ${pos.x},${pos.y},${pos.z}: ${e.message}`);
+          }
+        }
+
+        // Progress update every 10 blocks
+        if ((idx + 1) % 10 === 0) {
+          send({ event: 'ack', action: 'dig_area', message: `Progress: ${idx + 1}/${blocks.length} blocks` });
+        }
+
+        // Continue with next block
+        digNext(idx + 1);
+      }
+
+      digNext(0);
+      break;
+    }
+
     case 'quit':
       bot.quit();
       process.exit(0);

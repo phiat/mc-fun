@@ -503,6 +503,11 @@ defmodule McFun.ChatBot do
       tool("find_and_dig", "Find the nearest block of a type and mine it", %{
         "block_type" => %{"type" => "string", "description" => "Block type to find and mine, e.g. coal_ore, iron_ore, diamond_ore, oak_log"}
       }, ["block_type"]),
+      tool("dig_area", "Dig a rectangular area (room/tunnel). Digs from your current position.", %{
+        "width" => %{"type" => "integer", "description" => "Width (X axis), max 20"},
+        "height" => %{"type" => "integer", "description" => "Height (Y axis), max 10, default 3"},
+        "depth" => %{"type" => "integer", "description" => "Depth (Z axis), max 20"}
+      }, ["width", "depth"]),
       tool("jump", "Jump once", %{}, []),
       tool("attack", "Attack the nearest entity", %{}, []),
       tool("drop", "Drop the currently held item", %{}, []),
@@ -571,6 +576,10 @@ defmodule McFun.ChatBot do
     McFun.Bot.find_and_dig(bot, block_type)
   end
 
+  defp execute_tool(bot, "dig_area", args, _username) do
+    McFun.Bot.dig_area(bot, args)
+  end
+
   defp execute_tool(bot, "jump", _args, _username) do
     McFun.Bot.send_command(bot, %{action: "jump"})
   end
@@ -601,7 +610,7 @@ defmodule McFun.ChatBot do
 
   defp action_instructions(true = _use_tools) do
     """
-    You control a real bot. When a player asks you to do something physical, use the appropriate tool. IMPORTANT: You MUST always include a text response in addition to any tool calls — never return only a tool call with no message. Available tools: goto_player, follow_player, dig, find_and_dig, jump, attack, drop, sneak, craft, equip.
+    You control a real bot. When a player asks you to do something physical, use the appropriate tool. IMPORTANT: You MUST always include a text response in addition to any tool calls — never return only a tool call with no message. Available tools: goto_player, follow_player, dig, find_and_dig, dig_area (width/height/depth for rooms/tunnels), jump, attack, drop, sneak, craft, equip.
     """
   end
 
