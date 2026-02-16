@@ -108,7 +108,6 @@ defmodule McFun.LLM.Groq do
     end
   end
 
-
   defp format_messages(messages) when is_list(messages) do
     Enum.map(messages, fn
       {role, content} -> %{role: to_string(role), content: content}

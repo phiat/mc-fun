@@ -135,7 +135,9 @@ defmodule McFun.ChatBot do
     reply = strip_thinking(response)
 
     # Broadcast to dashboard (full response for debugging)
-    tools_str = Enum.map_join(tool_calls, ", ", fn %{name: n, args: a} -> "#{n}(#{inspect(a)})" end)
+    tools_str =
+      Enum.map_join(tool_calls, ", ", fn %{name: n, args: a} -> "#{n}(#{inspect(a)})" end)
+
     broadcast_llm_event(state.bot_name, username, response, tools_str)
 
     # Send cleaned reply to chat
@@ -151,7 +153,9 @@ defmodule McFun.ChatBot do
         execute_tool(state.bot_name, name, args, username)
       catch
         kind, reason ->
-          Logger.warning("ChatBot #{state.bot_name}: tool #{name} failed: #{kind} #{inspect(reason)}")
+          Logger.warning(
+            "ChatBot #{state.bot_name}: tool #{name} failed: #{kind} #{inspect(reason)}"
+          )
       end
     end
 
@@ -167,7 +171,9 @@ defmodule McFun.ChatBot do
     # Fallback: regex-based action parsing for models without tool support
     actions =
       case McFun.ActionParser.parse(reply, username) do
-        [] -> nil
+        [] ->
+          nil
+
         actions ->
           Logger.info("ChatBot #{state.bot_name}: regex fallback actions #{inspect(actions)}")
           McFun.ActionParser.execute(actions, state.bot_name)
@@ -319,7 +325,9 @@ defmodule McFun.ChatBot do
     Task.start_link(fn ->
       # Get environment context
       survey_context = fetch_survey(bot_name)
-      system_prompt = state.personality <> "\n\n" <> action_instructions(use_tools) <> survey_context
+
+      system_prompt =
+        state.personality <> "\n\n" <> action_instructions(use_tools) <> survey_context
 
       result =
         McFun.LLM.Groq.chat(system_prompt, messages,
@@ -477,8 +485,11 @@ defmodule McFun.ChatBot do
 
     lines =
       case s["blocks"] do
-        list when is_list(list) and list != [] -> lines ++ ["Nearby blocks: #{Enum.join(list, ", ")}"]
-        _ -> lines
+        list when is_list(list) and list != [] ->
+          lines ++ ["Nearby blocks: #{Enum.join(list, ", ")}"]
+
+        _ ->
+          lines
       end
 
     lines =
@@ -486,7 +497,9 @@ defmodule McFun.ChatBot do
         list when is_list(list) and list != [] ->
           inv = Enum.map(list, fn i -> "#{i["name"]}x#{i["count"]}" end) |> Enum.join(", ")
           lines ++ ["Inventory: #{inv}"]
-        _ -> lines
+
+        _ ->
+          lines
       end
 
     lines =
@@ -494,7 +507,9 @@ defmodule McFun.ChatBot do
         list when is_list(list) and list != [] ->
           ents = Enum.map(list, fn e -> "#{e["name"]}(#{e["distance"]}m)" end) |> Enum.join(", ")
           lines ++ ["Nearby entities: #{ents}"]
-        _ -> lines
+
+        _ ->
+          lines
       end
 
     lines =
@@ -543,14 +558,31 @@ defmodule McFun.ChatBot do
         ["player"]
       ),
       tool("dig", "Dig/mine the block you are looking at", %{}, []),
-      tool("find_and_dig", "Find the nearest block of a type and mine it", %{
-        "block_type" => %{"type" => "string", "description" => "Block type to find and mine, e.g. coal_ore, iron_ore, diamond_ore, oak_log"}
-      }, ["block_type"]),
-      tool("dig_area", "Dig a rectangular area (room/tunnel). Digs from your current position.", %{
-        "width" => %{"type" => "integer", "description" => "Width (X axis), max 20"},
-        "height" => %{"type" => "integer", "description" => "Height (Y axis), max 10, default 3"},
-        "depth" => %{"type" => "integer", "description" => "Depth (Z axis), max 20"}
-      }, ["width", "depth"]),
+      tool(
+        "find_and_dig",
+        "Find the nearest block of a type and mine it",
+        %{
+          "block_type" => %{
+            "type" => "string",
+            "description" =>
+              "Block type to find and mine, e.g. coal_ore, iron_ore, diamond_ore, oak_log"
+          }
+        },
+        ["block_type"]
+      ),
+      tool(
+        "dig_area",
+        "Dig a rectangular area (room/tunnel). Digs from your current position.",
+        %{
+          "width" => %{"type" => "integer", "description" => "Width (X axis), max 20"},
+          "height" => %{
+            "type" => "integer",
+            "description" => "Height (Y axis), max 10, default 3"
+          },
+          "depth" => %{"type" => "integer", "description" => "Depth (Z axis), max 20"}
+        },
+        ["width", "depth"]
+      ),
       tool("jump", "Jump once", %{}, []),
       tool("attack", "Attack the nearest entity", %{}, []),
       tool("drop", "Drop the currently held item", %{}, []),
