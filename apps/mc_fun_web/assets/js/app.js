@@ -79,6 +79,14 @@ const Hooks = {
         this.draft = ""
       })
     }
+  },
+  QuickCommands: {
+    mounted() {
+      this.el.addEventListener("submit", (e) => {
+        const form = e.target.closest("form")
+        if (form) setTimeout(() => form.reset(), 50)
+      })
+    }
   }
 }
 

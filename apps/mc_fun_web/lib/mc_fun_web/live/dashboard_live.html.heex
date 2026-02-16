@@ -218,7 +218,12 @@
       </div>
 
       <%!-- Quick Commands Palette --%>
-      <div :if={@rcon_quick_open} class="px-4 pb-4 space-y-2">
+      <div
+        :if={@rcon_quick_open}
+        id="rcon-quick-cmds"
+        phx-hook="QuickCommands"
+        class="px-4 pb-4 space-y-2"
+      >
         <% entity_opts = entity_options(@bots, @player_statuses) %>
 
         <%!-- SAY --%>
