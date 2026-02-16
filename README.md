@@ -1,22 +1,34 @@
 # MC Fun
 
-Phoenix LiveView control panel for a Minecraft server. Manage bots, RCON commands, effects, block text displays, and events from a browser dashboard.
+Phoenix LiveView control panel for a Minecraft server. Manage bots, execute RCON commands, fire effects, render block text, and watch events — all from a browser dashboard or the command line.
 
 ## Features
 
-- **Bot Management** — Spawn and control mineflayer bots via Erlang Ports
-- **LLM Chat** — Bots respond to players using Groq LLM models (configurable per-bot)
-- **LLM-to-Action** — Bots perform physical actions (dig, follow, attack, etc.) when their LLM response implies it
-- **A* Pathfinding** — Bots navigate using mineflayer-pathfinder for goto/follow/patrol
-- **Personality Presets** — 22 themed bot personalities across 6 categories
-- **Bot Config Modal** — Per-bot model, personality, behavior, and action controls
-- **Bot Status** — Live HP/food bars, position, dimension on each bot card
-- **RCON Console** — Execute server commands from the dashboard
-- **Effects** — Celebration, welcome, death, achievement, firework effects
-- **Block Display** — Render text as blocks in the Minecraft world
-- **Event Stream** — Real-time event log (joins, leaves, chat, deaths, advancements)
-- **Behaviors** — Patrol, follow, and guard behaviors for bots
-- **SNBT Parser** — Recursive descent parser for Minecraft's NBT text format (player data, inventories, block states)
+**Bots**
+- Spawn and control [mineflayer](https://github.com/PrismarineJS/mineflayer) bots via Erlang Ports
+- LLM chat via Groq — bots respond to players, perform actions based on LLM output
+- A* pathfinding (mineflayer-pathfinder) for goto, follow, patrol
+- 22 personality presets across 6 categories
+- Behaviors: patrol (waypoint loop), follow (player), guard (position + radius)
+- Per-bot config modal: model, personality, behaviors, actions
+
+**Dashboard**
+- Live bot cards with HP/food bars, position, dimension
+- Player cards with stats and `[USE]` coord buttons
+- RCON terminal with command history, Tab-repeat, and quick command palette
+- Entity picker dropdowns in FX and Display panels
+- Effects panel with presets + custom title/subtitle messages
+- Block text display with entity-based coordinate fill
+- Real-time event stream (joins, leaves, chat, deaths, advancements)
+
+**CLI**
+- Full suite of `mix mc.*` tasks mirroring dashboard functionality
+- Effects, titles, sounds, and particles via `mix mc.fx`
+- Live event watcher and system health check
+
+**Engine**
+- SNBT parser — recursive descent parser for Minecraft's NBT text format
+- In-memory state (GenServers, ETS, EventStore) — no database
 
 ## Setup
 
@@ -42,27 +54,22 @@ mix phx.server              # http://localhost:4000/dashboard
 
 ```
 Phoenix LiveView Dashboard (/dashboard)
-    │
-    ├── McFun.Bot ──────────── bridge.js (mineflayer + pathfinder, Erlang Port)
-    │   ├── dig, place, equip, craft, drop, goto, follow, jump, sneak, attack
-    │   └── status: position, health, food, dimension (polled every 5s)
-    │
-    ├── McFun.ChatBot ─────── Groq LLM API
-    │   ├── !ask, !model, !models, !personality, !reset, !tp
-    │   └── whispers always get a response
-    │
-    ├── McFun.ActionParser ── Regex-based LLM response → bot action translator
-    │   └── "I'll dig that" → Bot.send_command("dig_looking_at")
-    │
-    ├── McFun.BotBehaviors ── Persistent behaviors (1 per bot, 1s tick)
-    │   └── patrol (waypoints loop), follow (player), guard (position + radius)
-    │
-    ├── McFun.Presets ─────── 22 bot personalities across 6 categories
-    │
-    ├── McFun.SNBT ───────── SNBT parser (NBT text → Elixir maps/lists)
-    ├── McFun.Rcon ────────── Minecraft Server (RCON)
-    ├── McFun.Effects ─────── RCON particle/sound commands
-    └── McFun.Display ─────── Block text rendering
+    |
+    |-- McFun.Bot ------------ bridge.js (mineflayer + pathfinder, Erlang Port)
+    |   |-- dig, place, equip, craft, drop, goto, follow, jump, sneak, attack
+    |   +-- status: position, health, food, dimension (polled every 5s)
+    |
+    |-- McFun.ChatBot -------- Groq LLM API
+    |   |-- !ask, !model, !models, !personality, !reset, !tp
+    |   +-- whispers always get a response
+    |
+    |-- McFun.ActionParser --- LLM response -> bot action (regex + tool calling)
+    |-- McFun.BotBehaviors --- patrol / follow / guard (1s tick GenServers)
+    |-- McFun.Presets -------- 22 bot personalities across 6 categories
+    |-- McFun.SNBT ----------- NBT text -> Elixir maps/lists (recursive descent)
+    |-- McFun.Rcon ----------- Minecraft Server (RCON)
+    |-- McFun.Effects -------- title, firework, particle, sound effects
+    +-- McFun.Display -------- Block text rendering
 ```
 
 ## In-Game Commands
@@ -77,37 +84,43 @@ Phoenix LiveView Dashboard (/dashboard)
 | `!tp [player]` | Teleport bot to a player |
 | `/msg BotName <text>` | Whisper to bot (always gets a response) |
 
-## Dashboard Controls
+## Dashboard Tabs
 
-### Bot Cards
-- HP bar, food bar, position (X/Y/Z), dimension
-- Model switcher, behavior status
-- Teleport buttons per online player
-- CONFIGURE button → full config modal
-
-### Config Modal (per bot)
-- **LLM tab** — model, personality editor, preset quick-apply, conversation viewer
-- **BEHAVIOR tab** — patrol/follow/guard with stop button
-- **ACTIONS tab** — chat, goto, teleport, jump/sneak/attack
-
-### Other Tabs
-- **RCON** — command terminal
-- **FX** — particle/sound effects
-- **DISPLAY** — block text rendering
-- **EVENTS** — real-time event stream
+| Tab | Description |
+|-----|-------------|
+| **UNITS** | Bot cards (HP, food, position, model, behavior), deploy panel, config modal |
+| **PLAYERS** | Online player cards with stats and `[USE]` coord button |
+| **RCON** | Command terminal, history (arrow keys), Tab-repeat, quick command palette |
+| **FX** | Entity picker, effect buttons, custom title/subtitle message form |
+| **DISPLAY** | Block text rendering with entity-based coordinate fill |
+| **EVENTS** | Real-time event stream |
 
 ## CLI Tools
 
 ```bash
-mix mc.cmd "say hello"      # arbitrary RCON command
-mix mc.players              # list online players
-mix mc.say Hello world!     # broadcast chat message
-mix mc.give Player diamond  # give item to player
-mix mc.tp Player 0 64 0    # teleport player
-mix mc.weather clear        # set weather
-mix mc.time day             # set time of day
-mix mc.status               # system health check
-mix mc.events               # live event watcher (Ctrl+C to stop)
+# Server interaction
+mix mc.cmd "say hello"                     # arbitrary RCON command
+mix mc.players                             # list online players
+mix mc.say Hello world!                    # broadcast chat message
+mix mc.give Player diamond 64              # give item to player
+mix mc.tp Player 0 64 0                   # teleport player
+mix mc.weather clear                       # set weather
+mix mc.time day                            # set time of day
+mix mc.gamemode creative @a                # set gamemode
+mix mc.effect @a speed 30 2                # give effect (duration, amplifier)
+mix mc.heal @a                             # full heal + feed
+
+# Effects & titles
+mix mc.fx title @a "Hello" "subtitle"      # title screen message
+mix mc.fx welcome @a                       # welcome effect (title + firework)
+mix mc.fx celebration @a                   # celebration effect
+mix mc.fx firework @a                      # firework
+mix mc.fx sound @a block.note_block.harp   # play sound
+mix mc.fx particle @a flame                # particle effect
+
+# Observability
+mix mc.status                              # system health check
+mix mc.events                              # live event watcher (Ctrl+C to stop)
 ```
 
 ## Testing
@@ -115,6 +128,7 @@ mix mc.events               # live event watcher (Ctrl+C to stop)
 ```bash
 mix test                                # unit tests (excludes smoke tests)
 mix test apps/mc_fun/test --only smoke  # smoke tests (require live RCON)
+mix precommit                           # compile + format + credo + test
 ```
 
 ## Tech Stack
@@ -123,3 +137,4 @@ mix test apps/mc_fun/test --only smoke  # smoke tests (require live RCON)
 - Node.js (mineflayer + mineflayer-pathfinder bridge)
 - Groq API (LLM)
 - Tailwind CSS
+- No database — all state in-memory
