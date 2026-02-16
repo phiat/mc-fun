@@ -20,7 +20,8 @@ defmodule McFun.ChatBot do
   @max_players 50
   @conversation_ttl_ms :timer.hours(1)
   @rate_limit_ms 2_000
-  @max_response_length 200
+  @chat_line_length 180
+  @max_chat_lines 4
   @fallback_model "openai/gpt-oss-20b"
 
   defstruct [
@@ -131,9 +132,13 @@ defmodule McFun.ChatBot do
   # LLM response with tool calls
   @impl true
   def handle_info({:llm_response, username, {:ok, response, tool_calls}}, state) do
+    # Broadcast to dashboard
+    tools_str = Enum.map_join(tool_calls, ", ", fn %{name: n, args: a} -> "#{n}(#{inspect(a)})" end)
+    broadcast_llm_event(state.bot_name, username, response, tools_str)
+
     # Send text reply (if any) to chat
     if response != "" do
-      McFun.Bot.chat(state.bot_name, truncate(response, @max_response_length))
+      send_paginated(state.bot_name, response)
     end
 
     # Execute tool calls
@@ -149,18 +154,18 @@ defmodule McFun.ChatBot do
   # LLM response text only (no tool calls) — fall back to regex parser
   @impl true
   def handle_info({:llm_response, username, {:ok, response}}, state) do
-    response = truncate(response, @max_response_length)
-    McFun.Bot.chat(state.bot_name, response)
-
     # Fallback: regex-based action parsing for models without tool support
-    case McFun.ActionParser.parse(response, username) do
-      [] ->
-        :ok
+    actions =
+      case McFun.ActionParser.parse(response, username) do
+        [] -> nil
+        actions ->
+          Logger.info("ChatBot #{state.bot_name}: regex fallback actions #{inspect(actions)}")
+          McFun.ActionParser.execute(actions, state.bot_name)
+          Enum.map_join(actions, ", ", fn {action, _} -> to_string(action) end)
+      end
 
-      actions ->
-        Logger.info("ChatBot #{state.bot_name}: regex fallback actions #{inspect(actions)}")
-        McFun.ActionParser.execute(actions, state.bot_name)
-    end
+    broadcast_llm_event(state.bot_name, username, response, actions)
+    send_paginated(state.bot_name, response)
 
     state = add_bot_response(state, username, response)
     {:noreply, state}
@@ -169,6 +174,7 @@ defmodule McFun.ChatBot do
   @impl true
   def handle_info({:llm_response, _username, {:error, reason}}, state) do
     Logger.warning("ChatBot LLM error: #{inspect(reason)}")
+    broadcast_llm_event(state.bot_name, nil, "LLM error: #{inspect(reason)}", nil)
     McFun.Bot.chat(state.bot_name, "Sorry, LLM error — try again!")
     {:noreply, state}
   end
@@ -296,12 +302,20 @@ defmodule McFun.ChatBot do
       "ChatBot #{state.bot_name}: sending to Groq [#{model}] for #{username} (#{length(messages)} msgs)"
     )
 
+    use_tools = supports_tools?(model)
+    tools = if use_tools, do: bot_tools(), else: nil
+    bot_name = state.bot_name
+
     Task.start_link(fn ->
+      # Get environment context
+      survey_context = fetch_survey(bot_name)
+      system_prompt = state.personality <> "\n\n" <> action_instructions(use_tools) <> survey_context
+
       result =
-        McFun.LLM.Groq.chat(state.personality, messages,
+        McFun.LLM.Groq.chat(system_prompt, messages,
           max_tokens: 150,
           model: model,
-          tools: bot_tools()
+          tools: tools
         )
 
       Logger.info("ChatBot Groq result: #{inspect(result, limit: 200)}")
@@ -353,16 +367,116 @@ defmodule McFun.ChatBot do
     %{state | conversations: conversations, last_active: last_active}
   end
 
-  defp truncate(text, max_len) do
-    if String.length(text) > max_len do
-      String.slice(text, 0, max_len - 3) <> "..."
+  defp send_paginated(bot_name, text) do
+    text
+    |> chunk_text(@chat_line_length)
+    |> Enum.take(@max_chat_lines)
+    |> Enum.each(fn line ->
+      McFun.Bot.chat(bot_name, line)
+      Process.sleep(300)
+    end)
+  end
+
+  defp chunk_text(text, max_len) do
+    words = String.split(text)
+    chunk_words(words, max_len, "", [])
+  end
+
+  defp chunk_words([], _max, "", acc), do: Enum.reverse(acc)
+  defp chunk_words([], _max, current, acc), do: Enum.reverse([current | acc])
+
+  defp chunk_words([word | rest], max, current, acc) do
+    candidate =
+      if current == "", do: word, else: current <> " " <> word
+
+    if String.length(candidate) <= max do
+      chunk_words(rest, max, candidate, acc)
     else
-      text
+      if current == "" do
+        # Single word longer than max — force it in
+        chunk_words(rest, max, "", [word | acc])
+      else
+        chunk_words([word | rest], max, "", [current | acc])
+      end
     end
   end
 
   defp default_model do
     Application.get_env(:mc_fun, :groq)[:model] || @fallback_model
+  end
+
+  defp broadcast_llm_event(bot_name, username, response, tools) do
+    event = %{
+      "event" => "llm_response",
+      "username" => username,
+      "response" => response,
+      "tools" => tools
+    }
+
+    Phoenix.PubSub.broadcast(McFun.PubSub, "bot:#{bot_name}", {:bot_event, bot_name, event})
+  end
+
+  defp fetch_survey(bot_name) do
+    case McFun.Bot.survey(bot_name) do
+      {:ok, survey} -> format_survey(survey)
+      _ -> ""
+    end
+  catch
+    _, _ -> ""
+  end
+
+  defp format_survey(s) do
+    lines = ["\n[ENVIRONMENT]"]
+
+    lines =
+      case s["position"] do
+        %{"x" => x, "y" => y, "z" => z} -> lines ++ ["Position: #{x}, #{y}, #{z}"]
+        _ -> lines
+      end
+
+    lines =
+      case s["looking_at"] do
+        nil -> lines
+        block -> lines ++ ["Looking at: #{block}"]
+      end
+
+    lines =
+      case s["blocks"] do
+        list when is_list(list) and list != [] -> lines ++ ["Nearby blocks: #{Enum.join(list, ", ")}"]
+        _ -> lines
+      end
+
+    lines =
+      case s["inventory"] do
+        list when is_list(list) and list != [] ->
+          inv = Enum.map(list, fn i -> "#{i["name"]}x#{i["count"]}" end) |> Enum.join(", ")
+          lines ++ ["Inventory: #{inv}"]
+        _ -> lines
+      end
+
+    lines =
+      case s["entities"] do
+        list when is_list(list) and list != [] ->
+          ents = Enum.map(list, fn e -> "#{e["name"]}(#{e["distance"]}m)" end) |> Enum.join(", ")
+          lines ++ ["Nearby entities: #{ents}"]
+        _ -> lines
+      end
+
+    lines =
+      case s["health"] do
+        nil -> lines
+        health -> lines ++ ["Health: #{trunc(health)}/20, Food: #{s["food"]}/20"]
+      end
+
+    Enum.join(lines, "\n")
+  end
+
+  # Models that support OpenAI-style tool/function calling.
+  # Compound models do internal tool calling (websearch etc) and reject external tools.
+  @tool_capable_prefixes ~w(llama qwen openai/ meta-llama/ moonshotai/)
+
+  defp supports_tools?(model_id) do
+    Enum.any?(@tool_capable_prefixes, &String.starts_with?(model_id, &1))
   end
 
   # Tool calling
@@ -386,6 +500,9 @@ defmodule McFun.ChatBot do
         ["player"]
       ),
       tool("dig", "Dig/mine the block you are looking at", %{}, []),
+      tool("find_and_dig", "Find the nearest block of a type and mine it", %{
+        "block_type" => %{"type" => "string", "description" => "Block type to find and mine, e.g. coal_ore, iron_ore, diamond_ore, oak_log"}
+      }, ["block_type"]),
       tool("jump", "Jump once", %{}, []),
       tool("attack", "Attack the nearest entity", %{}, []),
       tool("drop", "Drop the currently held item", %{}, []),
@@ -450,6 +567,10 @@ defmodule McFun.ChatBot do
     McFun.Bot.send_command(bot, %{action: "dig_looking_at"})
   end
 
+  defp execute_tool(bot, "find_and_dig", %{"block_type" => block_type}, _username) do
+    McFun.Bot.find_and_dig(bot, block_type)
+  end
+
   defp execute_tool(bot, "jump", _args, _username) do
     McFun.Bot.send_command(bot, %{action: "jump"})
   end
@@ -478,24 +599,32 @@ defmodule McFun.ChatBot do
     Logger.warning("ChatBot: unknown tool call #{name}(#{inspect(args)})")
   end
 
+  defp action_instructions(true = _use_tools) do
+    """
+    You control a real bot. When a player asks you to do something physical, use the appropriate tool. IMPORTANT: You MUST always include a text response in addition to any tool calls — never return only a tool call with no message. Available tools: goto_player, follow_player, dig, find_and_dig, jump, attack, drop, sneak, craft, equip.
+    """
+  end
+
+  defp action_instructions(false) do
+    """
+    You control a real bot. To perform actions, you MUST include the exact trigger phrase in your response. One action per response.
+
+    TRIGGER PHRASES (use exactly):
+    "on my way" or "coming to you" → move to the player
+    "I'll follow" or "following you" → follow the player
+    "I'll dig" or "mining" → dig the block you're looking at
+    "I'll jump" → jump
+    "I'll attack" or "attacking" → attack nearest entity
+    "I'll drop" or "dropping" → drop held item
+    "sneaking" → sneak/crouch
+    "I'll craft [item]" → craft an item
+    "I'll equip [item]" → equip an item
+
+    If a player asks you to do something physical, ALWAYS include the trigger phrase.
+    """
+  end
+
   defp default_personality do
-    """
-    You are a friendly Minecraft bot. Keep responses to 1-2 sentences. No markdown.
-
-    You control a real bot in the game. When a player asks you to do something physical, use the appropriate tool. You can also respond with just text for conversation.
-
-    Available actions (via tools):
-    - goto_player: Move to a player
-    - follow_player: Follow a player around
-    - dig: Mine the block you're looking at
-    - jump: Jump
-    - attack: Attack nearest entity
-    - drop: Drop held item
-    - sneak: Toggle sneaking
-    - craft: Craft an item (give item name)
-    - equip: Equip an item (give item name)
-
-    Always respond naturally. If the player asks you to come, go, follow, dig, fight, etc., use the tool AND give a short reply.
-    """
+    "You are a friendly Minecraft bot. Keep responses to 1-2 sentences. No markdown."
   end
 end

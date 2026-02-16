@@ -80,6 +80,18 @@ defmodule McFun.Bot do
     McFun.Rcon.command("tp #{bot_name} #{player}")
   end
 
+  @doc "Get a survey of the bot's surroundings (blocks, inventory, entities)."
+  def survey(bot_name) do
+    GenServer.call(via(bot_name), {:survey}, 10_000)
+  catch
+    :exit, _ -> {:error, :not_found}
+  end
+
+  @doc "Find and dig the nearest block of a given type."
+  def find_and_dig(bot_name, block_type) do
+    send_command(bot_name, %{action: "find_and_dig", block_type: block_type})
+  end
+
   @doc "Subscribe the calling process to events from this bot."
   def subscribe(bot_name) do
     Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{bot_name}")
@@ -138,6 +150,13 @@ defmodule McFun.Bot do
   end
 
   @impl true
+  def handle_call({:survey}, from, state) do
+    json = Jason.encode!(%{action: "survey"}) <> "\n"
+    Port.command(state.port, json)
+    {:noreply, %{state | listeners: [{:survey, from} | state.listeners]}}
+  end
+
+  @impl true
   def handle_call(:status, _from, state) do
     {:reply,
      %{
@@ -151,6 +170,17 @@ defmodule McFun.Bot do
   @impl true
   def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) do
     case Jason.decode(line) do
+      {:ok, %{"event" => "survey"} = event} ->
+        # Reply to waiting survey caller
+        {survey_listeners, rest} =
+          Enum.split_with(state.listeners, fn {type, _} -> type == :survey end)
+
+        for {:survey, from} <- survey_listeners do
+          GenServer.reply(from, {:ok, event})
+        end
+
+        {:noreply, %{state | listeners: rest}}
+
       {:ok, event} ->
         broadcast(state.name, event)
         {:noreply, update_state_from_event(state, event)}

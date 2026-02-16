@@ -216,7 +216,11 @@ defmodule McFunWeb.DashboardComponents do
                 phx-value-bot={@bot}
                 value={@status.model}
               >
-                <option :for={model <- @available_models} value={model}>
+                <option
+                  :for={model <- @available_models}
+                  value={model}
+                  selected={model == (@status && @status.model)}
+                >
                   {model}
                 </option>
               </select>
@@ -316,7 +320,11 @@ defmodule McFunWeb.DashboardComponents do
                 phx-value-bot={@bot}
                 value={@status && @status.model}
               >
-                <option :for={model <- @available_models} value={model}>
+                <option
+                  :for={model <- @available_models}
+                  value={model}
+                  selected={model == (@status && @status.model)}
+                >
                   {model}
                 </option>
               </select>

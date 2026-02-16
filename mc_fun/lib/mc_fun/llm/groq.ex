@@ -60,8 +60,10 @@ defmodule McFun.LLM.Groq do
   defp maybe_add_tools(body, []), do: body
   defp maybe_add_tools(body, tools), do: Map.put(body, :tools, tools)
 
-  defp parse_response(%{"content" => content, "tool_calls" => tool_calls})
+  defp parse_response(%{"tool_calls" => tool_calls} = msg)
        when is_list(tool_calls) and tool_calls != [] do
+    content = content_text(msg)
+
     parsed_calls =
       Enum.map(tool_calls, fn
         %{"function" => %{"name" => name, "arguments" => args_json}} ->
@@ -75,17 +77,37 @@ defmodule McFun.LLM.Groq do
       end)
       |> Enum.reject(&is_nil/1)
 
-    {:ok, content || "", parsed_calls}
+    {:ok, content, parsed_calls}
   end
 
-  defp parse_response(%{"content" => content}) do
-    {:ok, content || ""}
+  defp parse_response(msg) when is_map(msg) do
+    # Use content if available, otherwise fall back to reasoning for text-only responses
+    case content_text(msg) do
+      "" ->
+        case reasoning_text(msg) do
+          "" -> {:error, :empty_response}
+          text -> {:ok, text}
+        end
+
+      text ->
+        {:ok, text}
+    end
   end
 
-  defp parse_response(other) do
-    Logger.warning("Groq: unexpected message format: #{inspect(other)}")
-    {:error, :unexpected_format}
+  defp content_text(msg) do
+    case msg["content"] do
+      text when is_binary(text) -> text
+      _ -> ""
+    end
   end
+
+  defp reasoning_text(msg) do
+    case msg["reasoning"] do
+      text when is_binary(text) -> text
+      _ -> ""
+    end
+  end
+
 
   defp format_messages(messages) when is_list(messages) do
     Enum.map(messages, fn

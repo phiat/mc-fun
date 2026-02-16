@@ -403,6 +403,118 @@ function handleCommand(cmd) {
       break;
     }
 
+    case 'survey': {
+      const range = cmd.range || 16;
+      const mcData = require('minecraft-data')(bot.version);
+
+      // Nearby blocks — find all non-air blocks in range, group by type
+      const blockCounts = {};
+      const pos = bot.entity.position;
+      const cursor = bot.blockAtCursor(5);
+
+      // Sample blocks in range using findBlocks for common interesting types
+      const interestingBlocks = [];
+      for (const [name, block] of Object.entries(mcData.blocksByName)) {
+        if (['air', 'cave_air', 'void_air', 'water', 'lava', 'bedrock', 'stone',
+             'dirt', 'grass_block', 'deepslate', 'netherrack', 'end_stone',
+             'sand', 'gravel', 'sandstone', 'diorite', 'granite', 'andesite',
+             'tuff', 'calcite', 'dripstone_block', 'smooth_basalt',
+             'cobblestone', 'mossy_cobblestone'].includes(name)) continue;
+        try {
+          const found = bot.findBlocks({ matching: block.id, maxDistance: range, count: 5 });
+          if (found.length > 0) {
+            interestingBlocks.push({ name, count: found.length, nearest: found[0] });
+          }
+        } catch(_) {}
+      }
+
+      // Inventory
+      const items = bot.inventory.items().map(i => ({ name: i.name, count: i.count }));
+
+      // Nearby entities
+      const entities = [];
+      for (const [id, entity] of Object.entries(bot.entities)) {
+        if (entity === bot.entity) continue;
+        const dist = entity.position.distanceTo(pos);
+        if (dist <= range) {
+          entities.push({
+            type: entity.type,
+            name: entity.name || entity.username || entity.displayName || 'unknown',
+            distance: Math.round(dist),
+          });
+        }
+      }
+      // Sort by distance, limit to 15
+      entities.sort((a, b) => a.distance - b.distance);
+
+      send({
+        event: 'survey',
+        position: { x: Math.round(pos.x), y: Math.round(pos.y), z: Math.round(pos.z) },
+        looking_at: cursor ? cursor.name : null,
+        blocks: interestingBlocks.slice(0, 20).map(b => `${b.name}(${b.count})`),
+        inventory: items.slice(0, 20),
+        entities: entities.slice(0, 15),
+        health: bot.health,
+        food: bot.food,
+      });
+      break;
+    }
+
+    case 'find_and_dig': {
+      const blockType = cmd.block_type;
+      const mcData = require('minecraft-data')(bot.version);
+      const blockDef = mcData.blocksByName[blockType];
+      if (!blockDef) {
+        send({ event: 'error', action: 'find_and_dig', message: `Unknown block type: ${blockType}` });
+        break;
+      }
+      const found = bot.findBlocks({ matching: blockDef.id, maxDistance: 32, count: 1 });
+      if (found.length === 0) {
+        send({ event: 'error', action: 'find_and_dig', message: `No ${blockType} found within 32 blocks` });
+        break;
+      }
+      const targetPos = found[0];
+      const targetBlock = bot.blockAt(targetPos);
+      if (!targetBlock) {
+        send({ event: 'error', action: 'find_and_dig', message: `Block at ${targetPos} disappeared` });
+        break;
+      }
+
+      // Pathfind to adjacent block, then dig
+      if (bot.pathfinder && bot.pathfinder.movements) {
+        bot.pathfinder.setGoal(new GoalNear(targetPos.x, targetPos.y, targetPos.z, 2));
+        // Wait for pathfinder to reach goal
+        bot.once('goal_reached', () => {
+          const block = bot.blockAt(targetPos);
+          if (block && block.name !== 'air') {
+            bot.dig(block)
+              .then(() => send({ event: 'ack', action: 'find_and_dig', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z }))
+              .catch(err => send({ event: 'error', action: 'find_and_dig', message: err.message }));
+          } else {
+            send({ event: 'ack', action: 'find_and_dig', block: blockType, message: 'block already gone' });
+          }
+        });
+        // Timeout if pathfinding takes too long
+        setTimeout(() => {
+          if (bot.pathfinder.isMoving()) {
+            bot.pathfinder.setGoal(null);
+            send({ event: 'error', action: 'find_and_dig', message: `Couldn't reach ${blockType} in time` });
+          }
+        }, 15000);
+      } else {
+        // No pathfinder — try to dig if close enough
+        const dist = bot.entity.position.distanceTo(targetPos);
+        if (dist <= 5) {
+          bot.dig(targetBlock)
+            .then(() => send({ event: 'ack', action: 'find_and_dig', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z }))
+            .catch(err => send({ event: 'error', action: 'find_and_dig', message: err.message }));
+        } else {
+          send({ event: 'error', action: 'find_and_dig', message: `${blockType} found at ${targetPos} but too far (${Math.round(dist)} blocks) and no pathfinder` });
+        }
+      }
+      break;
+    }
+
     case 'quit':
       bot.quit();
       process.exit(0);

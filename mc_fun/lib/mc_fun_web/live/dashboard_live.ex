@@ -678,24 +678,7 @@ defmodule McFunWeb.DashboardLive do
   end
 
   defp default_personality do
-    """
-    You are a friendly Minecraft bot. Keep responses to 1-2 sentences. No markdown.
-
-    You control a real bot in the game. When a player asks you to do something physical, use the appropriate tool. You can also respond with just text for conversation.
-
-    Available actions (via tools):
-    - goto_player: Move to a player
-    - follow_player: Follow a player around
-    - dig: Mine the block you're looking at
-    - jump: Jump
-    - attack: Attack nearest entity
-    - drop: Drop held item
-    - sneak: Toggle sneaking
-    - craft: Craft an item (give item name)
-    - equip: Equip an item (give item name)
-
-    Always respond naturally. If the player asks you to come, go, follow, dig, fight, etc., use the tool AND give a short reply.
-    """
+    "You are a friendly Minecraft bot. Keep responses to 1-2 sentences. No markdown."
   end
 
   defp stop_chatbot(name) do
@@ -715,6 +698,7 @@ defmodule McFunWeb.DashboardLive do
   defp event_color(:bot_chat), do: "text-[#00ffff]"
   defp event_color(:bot_whisper), do: "text-[#ff66aa]"
   defp event_color(:bot_spawn), do: "text-[#00ff88]"
+  defp event_color(:bot_llm_response), do: "text-[#ffcc00]"
   defp event_color(_), do: "text-[#666]"
 
   defp format_event_data(data) when is_map(data) do
