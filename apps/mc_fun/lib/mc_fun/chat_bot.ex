@@ -1049,6 +1049,6 @@ defmodule McFun.ChatBot do
   end
 
   defp default_personality do
-    "You are a friendly Minecraft bot. Keep responses to 1-2 sentences. No markdown."
+    chat_bot_config(:default_personality)
   end
 end

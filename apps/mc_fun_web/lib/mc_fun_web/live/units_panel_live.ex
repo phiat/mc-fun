@@ -287,6 +287,6 @@ defmodule McFunWeb.UnitsPanelLive do
   end
 
   defp default_personality do
-    "You are a friendly Minecraft bot. Keep responses to 1-2 sentences. No markdown."
+    Application.get_env(:mc_fun, :chat_bot)[:default_personality]
   end
 end

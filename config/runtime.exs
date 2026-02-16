@@ -27,6 +27,12 @@ config :mc_fun, :groq,
 
 # ChatBot tuning
 config :mc_fun, :chat_bot,
+  default_personality:
+    Map.get(
+      env,
+      "CHATBOT_DEFAULT_PERSONALITY",
+      "You are a friendly Minecraft bot. Keep responses to 1-2 sentences. No markdown."
+    ),
   heartbeat_behavior_ms:
     String.to_integer(Map.get(env, "CHATBOT_HEARTBEAT_BEHAVIOR_MS", "15000")),
   heartbeat_idle_ms: String.to_integer(Map.get(env, "CHATBOT_HEARTBEAT_IDLE_MS", "120000")),
