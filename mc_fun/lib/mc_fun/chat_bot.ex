@@ -128,7 +128,20 @@ defmodule McFun.ChatBot do
   @impl true
   def handle_info({:llm_response, username, {:ok, response}}, state) do
     response = truncate(response, @max_response_length)
+
+    # Send text response to chat
     McFun.Bot.chat(state.bot_name, response)
+
+    # Parse and execute any actions implied by the response
+    case McFun.ActionParser.parse(response, username) do
+      [] ->
+        :ok
+
+      actions ->
+        Logger.info("ChatBot #{state.bot_name}: detected actions #{inspect(actions)} from response")
+        McFun.ActionParser.execute(actions, state.bot_name)
+    end
+
     state = add_bot_response(state, username, response)
     {:noreply, state}
   end
@@ -299,6 +312,19 @@ defmodule McFun.ChatBot do
     Keep responses SHORT (1-2 sentences max). Be fun, helpful, and in-character.
     You live in the Minecraft world. You can see, mine, build, and fight.
     Don't use markdown formatting. Just plain text suitable for Minecraft chat.
+
+    IMPORTANT: You can actually perform actions! When a player asks you to do something,
+    respond with action words to trigger them:
+    - Say "I'll dig" or "mining" to dig the block you're looking at
+    - Say "I'll jump" or "jumping" to jump
+    - Say "following you" or "I'll follow" to follow the player
+    - Say "on my way" or "coming to you" to go to the player
+    - Say "I'll attack" or "attacking" to attack the nearest entity
+    - Say "I'll drop" or "dropping" to drop your held item
+    - Say "sneaking" or "crouching" to sneak
+    - Say "I'll craft" to craft something
+    - Say "I'll equip" to equip something
+    Always use these action phrases when agreeing to do something physical.
     """
   end
 end

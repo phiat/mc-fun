@@ -8,6 +8,8 @@
  */
 
 const mineflayer = require('mineflayer');
+const { pathfinder, Movements, goals: { GoalBlock, GoalFollow, GoalNear } } = require('mineflayer-pathfinder');
+const Vec3 = require('vec3');
 const readline = require('readline');
 
 // Config from environment or argv
@@ -35,9 +37,24 @@ const bot = mineflayer.createBot({
 
 // --- Events -> Elixir ---
 
+// Load pathfinder plugin once, before spawn fires
+bot.loadPlugin(pathfinder);
+
+bot.once('spawn', () => {
+  try {
+    const mcData = require('minecraft-data')(bot.version);
+    const defaultMove = new Movements(bot, mcData);
+    bot.pathfinder.setMovements(defaultMove);
+    log('Pathfinder loaded successfully');
+  } catch (err) {
+    log(`Pathfinder init failed (falling back to simple movement): ${err.message}`);
+  }
+});
+
 bot.on('spawn', () => {
   const pos = bot.entity.position;
-  send({ event: 'spawn', position: { x: pos.x, y: pos.y, z: pos.z } });
+  const dimension = bot.game && bot.game.dimension;
+  send({ event: 'spawn', position: { x: pos.x, y: pos.y, z: pos.z }, dimension });
   log('Bot spawned');
 });
 
@@ -123,13 +140,15 @@ function handleCommand(cmd) {
 
     case 'move': {
       const { x, y, z } = cmd;
-      const goal = new (require('mineflayer-pathfinder').goals.GoalBlock)(x, y, z);
-      // Only use pathfinder if loaded
-      if (bot.pathfinder) {
-        bot.pathfinder.setGoal(goal);
+      if (bot.pathfinder && bot.pathfinder.movements) {
+        bot.pathfinder.setGoal(new GoalBlock(x, y, z));
       } else {
-        // Simple movement: look at target and walk
-        bot.lookAt(bot.entity.position.offset(x - bot.entity.position.x, 0, z - bot.entity.position.z));
+        // Simple fallback: look at target and walk
+        const pos = bot.entity.position;
+        const dx = x - pos.x;
+        const dz = z - pos.z;
+        const yaw = Math.atan2(-dx, dz);
+        bot.look(yaw, 0, true);
         bot.setControlState('forward', true);
         setTimeout(() => bot.clearControlStates(), 2000);
       }
@@ -185,6 +204,7 @@ function handleCommand(cmd) {
         z: bot.entity.position.z,
         yaw: bot.entity.yaw,
         pitch: bot.entity.pitch,
+        dimension: bot.game && bot.game.dimension,
       });
       break;
 
@@ -201,9 +221,8 @@ function handleCommand(cmd) {
 
     case 'goto': {
       const { x, y, z } = cmd;
-      if (bot.pathfinder) {
-        const { goals } = require('mineflayer-pathfinder');
-        bot.pathfinder.setGoal(new goals.GoalBlock(x, y, z));
+      if (bot.pathfinder && bot.pathfinder.movements) {
+        bot.pathfinder.setGoal(new GoalBlock(x, y, z));
       } else {
         // Simple fallback: look toward target and walk
         const pos = bot.entity.position;
@@ -221,10 +240,9 @@ function handleCommand(cmd) {
     case 'follow': {
       const target = bot.players[cmd.target];
       if (target && target.entity) {
-        if (bot.pathfinder) {
-          const { goals } = require('mineflayer-pathfinder');
+        if (bot.pathfinder && bot.pathfinder.movements) {
           const dist = cmd.distance || 3;
-          bot.pathfinder.setGoal(new goals.GoalFollow(target.entity, dist), true);
+          bot.pathfinder.setGoal(new GoalFollow(target.entity, dist), true);
         } else {
           // Simple fallback
           const pos = bot.entity.position;
@@ -239,6 +257,130 @@ function handleCommand(cmd) {
         send({ event: 'ack', action: 'follow', target: cmd.target });
       } else {
         send({ event: 'error', message: `Player ${cmd.target} not found or not visible` });
+      }
+      break;
+    }
+
+    case 'dig': {
+      const { x, y, z } = cmd;
+      const block = bot.blockAt(new Vec3(x, y, z));
+      if (!block || block.name === 'air') {
+        send({ event: 'error', action: 'dig', message: `No block at ${x}, ${y}, ${z}` });
+      } else {
+        bot.dig(block)
+          .then(() => {
+            send({ event: 'ack', action: 'dig', block: block.name, x, y, z });
+          })
+          .catch((err) => {
+            send({ event: 'error', action: 'dig', message: err.message });
+          });
+      }
+      break;
+    }
+
+    case 'dig_looking_at': {
+      const target = bot.blockAtCursor(5);
+      if (!target || target.name === 'air') {
+        send({ event: 'error', action: 'dig_looking_at', message: 'No block in line of sight' });
+      } else {
+        bot.dig(target)
+          .then(() => {
+            send({ event: 'ack', action: 'dig_looking_at', block: target.name, x: target.position.x, y: target.position.y, z: target.position.z });
+          })
+          .catch((err) => {
+            send({ event: 'error', action: 'dig_looking_at', message: err.message });
+          });
+      }
+      break;
+    }
+
+    case 'place': {
+      const { x, y, z, face } = cmd;
+      // face: 'top', 'bottom', 'north', 'south', 'east', 'west' or {fx, fy, fz}
+      const faceVectors = {
+        top:    new Vec3(0, 1, 0),
+        bottom: new Vec3(0, -1, 0),
+        north:  new Vec3(0, 0, -1),
+        south:  new Vec3(0, 0, 1),
+        east:   new Vec3(1, 0, 0),
+        west:   new Vec3(-1, 0, 0),
+      };
+      let faceVec;
+      if (typeof face === 'string') {
+        faceVec = faceVectors[face] || faceVectors.top;
+      } else if (face && face.fx !== undefined) {
+        faceVec = new Vec3(face.fx, face.fy, face.fz);
+      } else {
+        faceVec = faceVectors.top;
+      }
+      const refBlock = bot.blockAt(new Vec3(x, y, z));
+      if (!refBlock) {
+        send({ event: 'error', action: 'place', message: `No reference block at ${x}, ${y}, ${z}` });
+      } else {
+        bot.placeBlock(refBlock, faceVec)
+          .then(() => {
+            send({ event: 'ack', action: 'place', x, y, z, face: face || 'top' });
+          })
+          .catch((err) => {
+            send({ event: 'error', action: 'place', message: err.message });
+          });
+      }
+      break;
+    }
+
+    case 'equip': {
+      const { item_name, destination } = cmd;
+      const dest = destination || 'hand';
+      const item = bot.inventory.items().find(i => i.name === item_name);
+      if (!item) {
+        send({ event: 'error', action: 'equip', message: `Item '${item_name}' not in inventory` });
+      } else {
+        bot.equip(item, dest)
+          .then(() => {
+            send({ event: 'ack', action: 'equip', item_name, destination: dest });
+          })
+          .catch((err) => {
+            send({ event: 'error', action: 'equip', message: err.message });
+          });
+      }
+      break;
+    }
+
+    case 'craft': {
+      const { item_name, count } = cmd;
+      const mcData = require('minecraft-data')(bot.version);
+      const itemDef = mcData.itemsByName[item_name];
+      if (!itemDef) {
+        send({ event: 'error', action: 'craft', message: `Unknown item: '${item_name}'` });
+        break;
+      }
+      const recipes = bot.recipesFor(itemDef.id, null, count || 1, null);
+      if (!recipes || recipes.length === 0) {
+        send({ event: 'error', action: 'craft', message: `No recipe for '${item_name}' (need crafting table nearby?)` });
+      } else {
+        bot.craft(recipes[0], count || 1, null)
+          .then(() => {
+            send({ event: 'ack', action: 'craft', item_name, count: count || 1 });
+          })
+          .catch((err) => {
+            send({ event: 'error', action: 'craft', message: err.message });
+          });
+      }
+      break;
+    }
+
+    case 'drop': {
+      const held = bot.heldItem;
+      if (!held) {
+        send({ event: 'error', action: 'drop', message: 'Not holding any item' });
+      } else {
+        bot.tossStack(held)
+          .then(() => {
+            send({ event: 'ack', action: 'drop', item: held.name, count: held.count });
+          })
+          .catch((err) => {
+            send({ event: 'error', action: 'drop', message: err.message });
+          });
       }
       break;
     }

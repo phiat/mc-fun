@@ -155,7 +155,11 @@ defmodule McFunWeb.DashboardLive do
   def handle_event("stop_bot", %{"name" => name}, socket) do
     stop_chatbot(name)
     McFun.BotSupervisor.stop_bot(name)
-    {:noreply, assign(socket, bots: list_bots(), bot_statuses: build_bot_statuses())}
+    # Optimistically remove the bot; schedule a refresh to catch async cleanup
+    bots = Enum.reject(socket.assigns.bots, &(&1 == name))
+    statuses = Map.delete(socket.assigns.bot_statuses, name)
+    Process.send_after(self(), :refresh_bots, 200)
+    {:noreply, assign(socket, bots: bots, bot_statuses: statuses)}
   end
 
   def handle_event("stop_all_bots", _params, socket) do
@@ -163,6 +167,8 @@ defmodule McFunWeb.DashboardLive do
       stop_chatbot(bot)
       McFun.BotSupervisor.stop_bot(bot)
     end
+    # Optimistically clear; schedule a refresh to catch async cleanup
+    Process.send_after(self(), :refresh_bots, 200)
     {:noreply, assign(socket, bots: [], bot_statuses: %{})}
   end
 
@@ -508,6 +514,7 @@ defmodule McFunWeb.DashboardLive do
       chatbot_running? = Registry.lookup(McFun.BotRegistry, {:chat_bot, bot}) != []
       chatbot_info = if chatbot_running?, do: try_chatbot_info(bot), else: nil
       behavior_info = try_behavior_info(bot)
+      bot_status = try_bot_status(bot)
 
       {bot, %{
         chatbot: chatbot_running?,
@@ -515,9 +522,19 @@ defmodule McFunWeb.DashboardLive do
         personality: chatbot_info && chatbot_info[:personality],
         conversations: chatbot_info && chatbot_info[:conversations],
         conversation_players: chatbot_info && chatbot_info[:conversation_players],
-        behavior: behavior_info
+        behavior: behavior_info,
+        position: bot_status[:position],
+        health: bot_status[:health],
+        food: bot_status[:food],
+        dimension: bot_status[:dimension]
       }}
     end
+  end
+
+  defp try_bot_status(bot_name) do
+    McFun.Bot.status(bot_name)
+  catch
+    _, _ -> %{position: nil, health: nil, food: nil, dimension: nil}
   end
 
   defp try_chatbot_info(bot_name) do
@@ -789,6 +806,39 @@ defmodule McFunWeb.DashboardLive do
                         <span>BEHAVIOR</span>
                         <span class="text-[#aa66ff]">{format_behavior(status.behavior)}</span>
                       </div>
+                      <%!-- Bot vitals --%>
+                      <%= if status.health do %>
+                        <div class="flex items-center justify-between">
+                          <span>HP</span>
+                          <div class="flex items-center gap-1">
+                            <div class="w-20 h-1.5 bg-[#222] overflow-hidden">
+                              <div class="h-full bg-[#ff4444] shadow-[0_0_4px_#ff4444]" style={"width: #{min(100, (status.health || 0) / 20 * 100)}%"} />
+                            </div>
+                            <span class="text-[#ff4444]">{trunc(status.health)}/20</span>
+                          </div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                          <span>FOOD</span>
+                          <div class="flex items-center gap-1">
+                            <div class="w-20 h-1.5 bg-[#222] overflow-hidden">
+                              <div class="h-full bg-[#ffaa00] shadow-[0_0_4px_#ffaa00]" style={"width: #{min(100, (status.food || 0) / 20 * 100)}%"} />
+                            </div>
+                            <span class="text-[#ffaa00]">{status.food}/20</span>
+                          </div>
+                        </div>
+                      <% end %>
+                      <%= if status.position do %>
+                        <div class="flex justify-between">
+                          <span>POS</span>
+                          <span class="text-[#888]"><%= with {x, y, z} <- status.position do %>X:<span class="text-[#e0e0e0]">{trunc(x)}</span> Y:<span class="text-[#e0e0e0]">{trunc(y)}</span> Z:<span class="text-[#e0e0e0]">{trunc(z)}</span><% end %></span>
+                        </div>
+                      <% end %>
+                      <%= if status.dimension do %>
+                        <div class="flex justify-between">
+                          <span>DIM</span>
+                          <span class="text-[#aa66ff]">{String.upcase(status.dimension)}</span>
+                        </div>
+                      <% end %>
                       <%!-- Model switcher --%>
                       <div class="pt-1">
                         <select

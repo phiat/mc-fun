@@ -6,7 +6,7 @@ defmodule McFun.Bot do
   use GenServer
   require Logger
 
-  defstruct [:name, :port, :listeners]
+  defstruct [:name, :port, :listeners, :position, :health, :food, :dimension]
 
   # Client API
 
@@ -41,6 +41,38 @@ defmodule McFun.Bot do
 
   def quit(bot_name) do
     send_command(bot_name, %{action: "quit"})
+  end
+
+  @doc "Returns the bot's current status: position, health, food, dimension."
+  def status(bot_name) do
+    GenServer.call(via(bot_name), :status)
+  catch
+    :exit, _ -> %{position: nil, health: nil, food: nil, dimension: nil}
+  end
+
+  @doc "Dig a block at the given coordinates."
+  def dig(bot_name, x, y, z) do
+    send_command(bot_name, %{action: "dig", x: x, y: y, z: z})
+  end
+
+  @doc "Place a block against the reference block at {x, y, z} on the given face."
+  def place(bot_name, x, y, z, face \\ "top") do
+    send_command(bot_name, %{action: "place", x: x, y: y, z: z, face: face})
+  end
+
+  @doc "Equip an item by name to the given destination (hand, head, torso, legs, feet, off-hand)."
+  def equip(bot_name, item_name, destination \\ "hand") do
+    send_command(bot_name, %{action: "equip", item_name: item_name, destination: destination})
+  end
+
+  @doc "Craft an item by name. Requires ingredients in inventory."
+  def craft(bot_name, item_name, count \\ 1) do
+    send_command(bot_name, %{action: "craft", item_name: item_name, count: count})
+  end
+
+  @doc "Drop the currently held item stack."
+  def drop(bot_name) do
+    send_command(bot_name, %{action: "drop"})
   end
 
   @doc "Teleport bot to a player via RCON."
@@ -92,6 +124,9 @@ defmodule McFun.Bot do
 
     Logger.info("Bot #{name} starting, bridge port opened")
 
+    # Poll position every 5 seconds
+    :timer.send_interval(5_000, self(), :poll_position)
+
     {:ok, %__MODULE__{name: name, port: port, listeners: []}}
   end
 
@@ -103,16 +138,38 @@ defmodule McFun.Bot do
   end
 
   @impl true
+  def handle_call(:status, _from, state) do
+    {:reply,
+     %{
+       position: state.position,
+       health: state.health,
+       food: state.food,
+       dimension: state.dimension
+     }, state}
+  end
+
+  @impl true
   def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) do
     case Jason.decode(line) do
       {:ok, event} ->
         broadcast(state.name, event)
-        {:noreply, state}
+        {:noreply, update_state_from_event(state, event)}
 
       {:error, _} ->
         Logger.debug("Bot #{state.name}: #{line}")
         {:noreply, state}
     end
+  end
+
+  @impl true
+  def handle_info(:poll_position, state) do
+    try do
+      json = Jason.encode!(%{action: "position"}) <> "\n"
+      Port.command(state.port, json)
+    rescue
+      _ -> :ok
+    end
+    {:noreply, state}
   end
 
   @impl true
@@ -126,6 +183,34 @@ defmodule McFun.Bot do
     Logger.warning("Bot #{state.name} bridge exited with status #{status}")
     {:stop, {:bridge_exit, status}, state}
   end
+
+  defp update_state_from_event(state, %{"event" => "spawn", "position" => pos} = event) do
+    dimension = Map.get(event, "dimension")
+    %{state |
+      position: {pos["x"], pos["y"], pos["z"]},
+      dimension: format_dimension(dimension)
+    }
+  end
+
+  defp update_state_from_event(state, %{"event" => "health", "health" => health, "food" => food}) do
+    %{state | health: health, food: food}
+  end
+
+  defp update_state_from_event(state, %{"event" => "position"} = event) do
+    dimension = Map.get(event, "dimension")
+    new_state = %{state | position: {event["x"], event["y"], event["z"]}}
+    if dimension, do: %{new_state | dimension: format_dimension(dimension)}, else: new_state
+  end
+
+  defp update_state_from_event(state, _event), do: state
+
+  defp format_dimension(nil), do: nil
+  defp format_dimension(dim) when is_binary(dim) do
+    dim
+    |> String.replace("minecraft:", "")
+    |> String.replace("the_", "")
+  end
+  defp format_dimension(_), do: nil
 
   defp broadcast(bot_name, event) do
     Phoenix.PubSub.broadcast(McFun.PubSub, "bot:#{bot_name}", {:bot_event, bot_name, event})
