@@ -170,6 +170,7 @@ defmodule McFunWeb.DashboardLive do
     {:noreply,
      assign(socket,
        bots: current_bots,
+       bot_statuses: build_bot_statuses(),
        rcon_status: check_rcon(),
        available_models: if(models != [], do: models, else: socket.assigns.available_models)
      )}
