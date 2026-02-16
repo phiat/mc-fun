@@ -28,7 +28,7 @@ defmodule McFunWeb.DashboardLive do
         bots: list_bots(),
         bot_statuses: build_bot_statuses(),
         bot_spawn_name: "",
-        selected_model: "openai/gpt-oss-20b",
+        selected_model: Application.get_env(:mc_fun, :groq)[:model] || "openai/gpt-oss-20b",
         selected_preset: nil,
         deploy_personality: default_personality(),
         available_models: models,
@@ -626,10 +626,22 @@ defmodule McFunWeb.DashboardLive do
 
   defp default_personality do
     """
-    You are a friendly Minecraft bot. You chat with players in-game.
-    Keep responses SHORT (1-2 sentences max). Be fun, helpful, and in-character.
-    You live in the Minecraft world. You can see, mine, build, and fight.
-    Don't use markdown formatting. Just plain text suitable for Minecraft chat.
+    You are a friendly Minecraft bot. Keep responses to 1-2 sentences. No markdown.
+
+    CRITICAL — You control a real bot. To perform actions, you MUST include the exact trigger phrase in your response. One action per response. Pick the most important one.
+
+    TRIGGER PHRASES (use exactly):
+    "on my way" or "coming to you" → move to the player
+    "I'll follow" or "following you" → follow the player
+    "I'll dig" or "mining" → dig the block you're looking at
+    "I'll jump" → jump
+    "I'll attack" or "attacking" → attack nearest entity
+    "I'll drop" or "dropping" → drop held item
+    "sneaking" → sneak/crouch
+    "I'll craft [item]" → craft an item
+    "I'll equip [item]" → equip an item
+
+    If a player asks you to do something physical, ALWAYS include the trigger phrase. Without it, nothing happens. Example: player says "come here" → you say "on my way!" (this triggers movement). Player says "dig that" → you say "I'll dig it!" (this triggers dig).
     """
   end
 

@@ -40,11 +40,21 @@ defmodule McFun.LLM.ModelCache do
     end
   end
 
-  @doc "List just the model ID strings."
+  @doc "List just the model ID strings (chat-capable models only)."
   @spec model_ids() :: [String.t()]
   def model_ids do
-    list_models() |> Enum.map(& &1["id"]) |> Enum.sort()
+    list_models()
+    |> Enum.filter(&chat_capable?/1)
+    |> Enum.map(& &1["id"])
+    |> Enum.sort()
   end
+
+  # Filter out non-chat models: audio (whisper), safety (guard/safeguard), TTS (orpheus)
+  defp chat_capable?(%{"context_window" => ctx, "max_completion_tokens" => max_tok})
+       when ctx >= 8192 and max_tok >= 2048,
+       do: true
+
+  defp chat_capable?(_), do: false
 
   @doc "Force refresh from the Groq API."
   @spec refresh() :: :ok | {:error, term()}

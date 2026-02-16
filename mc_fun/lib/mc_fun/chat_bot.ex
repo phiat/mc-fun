@@ -21,7 +21,7 @@ defmodule McFun.ChatBot do
   @conversation_ttl_ms :timer.hours(1)
   @rate_limit_ms 2_000
   @max_response_length 200
-  @default_model "openai/gpt-oss-20b"
+  @fallback_model "openai/gpt-oss-20b"
 
   defstruct [
     :bot_name,
@@ -62,7 +62,7 @@ defmodule McFun.ChatBot do
   def init(opts) do
     bot_name = Keyword.fetch!(opts, :bot_name)
     personality = Keyword.get(opts, :personality, default_personality())
-    model = Keyword.get(opts, :model, @default_model)
+    model = Keyword.get(opts, :model, default_model())
 
     Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{bot_name}")
 
@@ -341,25 +341,28 @@ defmodule McFun.ChatBot do
     end
   end
 
+  defp default_model do
+    Application.get_env(:mc_fun, :groq)[:model] || @fallback_model
+  end
+
   defp default_personality do
     """
-    You are a friendly Minecraft bot. You chat with players in-game.
-    Keep responses SHORT (1-2 sentences max). Be fun, helpful, and in-character.
-    You live in the Minecraft world. You can see, mine, build, and fight.
-    Don't use markdown formatting. Just plain text suitable for Minecraft chat.
+    You are a friendly Minecraft bot. Keep responses to 1-2 sentences. No markdown.
 
-    IMPORTANT: You can actually perform actions! When a player asks you to do something,
-    respond with action words to trigger them:
-    - Say "I'll dig" or "mining" to dig the block you're looking at
-    - Say "I'll jump" or "jumping" to jump
-    - Say "following you" or "I'll follow" to follow the player
-    - Say "on my way" or "coming to you" to go to the player
-    - Say "I'll attack" or "attacking" to attack the nearest entity
-    - Say "I'll drop" or "dropping" to drop your held item
-    - Say "sneaking" or "crouching" to sneak
-    - Say "I'll craft" to craft something
-    - Say "I'll equip" to equip something
-    Always use these action phrases when agreeing to do something physical.
+    CRITICAL — You control a real bot. To perform actions, you MUST include the exact trigger phrase in your response. One action per response. Pick the most important one.
+
+    TRIGGER PHRASES (use exactly):
+    "on my way" or "coming to you" → move to the player
+    "I'll follow" or "following you" → follow the player
+    "I'll dig" or "mining" → dig the block you're looking at
+    "I'll jump" → jump
+    "I'll attack" or "attacking" → attack nearest entity
+    "I'll drop" or "dropping" → drop held item
+    "sneaking" → sneak/crouch
+    "I'll craft [item]" → craft an item
+    "I'll equip [item]" → equip an item
+
+    If a player asks you to do something physical, ALWAYS include the trigger phrase. Without it, nothing happens. Example: player says "come here" → you say "on my way!" (this triggers movement). Player says "dig that" → you say "I'll dig it!" (this triggers dig).
     """
   end
 end
