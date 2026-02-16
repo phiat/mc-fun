@@ -19,7 +19,7 @@ defmodule McFun.MixProject do
   def application do
     [
       mod: {McFun.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :sentry]
     ]
   end
 
