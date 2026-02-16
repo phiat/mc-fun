@@ -42,6 +42,18 @@ config :mc_fun, :chat_bot,
   heartbeat_max_tokens: String.to_integer(Map.get(env, "CHATBOT_HEARTBEAT_MAX_TOKENS", "128")),
   max_response_tokens: String.to_integer(Map.get(env, "CHATBOT_MAX_RESPONSE_TOKENS", "1024"))
 
+# Bot-to-bot chat coordinator
+config :mc_fun, :bot_chat,
+  enabled: Map.get(env, "BOT_CHAT_ENABLED", "true") == "true",
+  proximity: String.to_integer(Map.get(env, "BOT_CHAT_PROXIMITY", "32")),
+  max_exchanges: String.to_integer(Map.get(env, "BOT_CHAT_MAX_EXCHANGES", "3")),
+  cooldown_ms: String.to_integer(Map.get(env, "BOT_CHAT_COOLDOWN_MS", "60000")),
+  response_chance: String.to_float(Map.get(env, "BOT_CHAT_RESPONSE_CHANCE", "0.7")),
+  min_delay_ms: String.to_integer(Map.get(env, "BOT_CHAT_MIN_DELAY_MS", "2000")),
+  max_delay_ms: String.to_integer(Map.get(env, "BOT_CHAT_MAX_DELAY_MS", "5000")),
+  topic_interval_ms: String.to_integer(Map.get(env, "BOT_CHAT_TOPIC_INTERVAL_MS", "300000")),
+  topic_injection_enabled: Map.get(env, "BOT_CHAT_TOPIC_INJECTION", "false") == "true"
+
 # Log watcher
 config :mc_fun, :log_watcher,
   log_path: Map.get(env, "MC_LOG_PATH"),

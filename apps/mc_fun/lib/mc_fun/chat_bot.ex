@@ -28,9 +28,6 @@ defmodule McFun.ChatBot do
   @fallback_model "openai/gpt-oss-20b"
 
   @heartbeat_initial_delay_ms 5_000
-  @bot_chat_max_exchanges 3
-  @bot_chat_cooldown_ms 60_000
-  @bot_chat_proximity 32
 
   @heartbeat_prompts [
     "What are you doing right now? Give a quick update.",
@@ -54,8 +51,7 @@ defmodule McFun.ChatBot do
     last_heartbeat: nil,
     heartbeat_enabled: true,
     last_message: nil,
-    bot_chat_counts: %{},
-    bot_chat_cooldowns: %{}
+    group_chat_enabled: true
   ]
 
   # Client API
@@ -83,6 +79,16 @@ defmodule McFun.ChatBot do
   @doc "Enable or disable heartbeat (ambient chat) for a bot."
   def toggle_heartbeat(bot_name, enabled?) do
     GenServer.call(via(bot_name), {:toggle_heartbeat, enabled?})
+  end
+
+  @doc "Enable or disable group chat (bot-to-bot) for a bot."
+  def toggle_group_chat(bot_name, enabled?) do
+    GenServer.call(via(bot_name), {:toggle_group_chat, enabled?})
+  end
+
+  @doc "Inject a message from another bot into this bot's conversation (used by BotChat coordinator)."
+  def inject_bot_message(bot_name, from_bot, message) do
+    GenServer.cast(via(bot_name), {:inject_bot_message, from_bot, message})
   end
 
   defp via(bot_name), do: {:via, Registry, {McFun.BotRegistry, {:chat_bot, bot_name}}}
@@ -133,8 +139,18 @@ defmodule McFun.ChatBot do
        conversations: state.conversations,
        conversation_players: Map.keys(state.conversations),
        heartbeat_enabled: state.heartbeat_enabled,
+       group_chat_enabled: state.group_chat_enabled,
        last_message: state.last_message
      }, state}
+  end
+
+  @impl true
+  def handle_call({:toggle_group_chat, enabled?}, _from, state) do
+    Logger.info(
+      "ChatBot #{state.bot_name} group chat #{if enabled?, do: "enabled", else: "disabled"}"
+    )
+
+    {:reply, :ok, %{state | group_chat_enabled: enabled?}}
   end
 
   @impl true
@@ -365,6 +381,20 @@ defmodule McFun.ChatBot do
   @impl true
   def handle_info(_msg, state), do: {:noreply, state}
 
+  # Bot-to-bot message injection from BotChat coordinator
+  @impl true
+  def handle_cast({:inject_bot_message, from_bot, message}, state) do
+    now = System.monotonic_time(:millisecond)
+
+    Logger.info(
+      "ChatBot #{state.bot_name}: injected bot message from #{from_bot}: #{inspect(message)}"
+    )
+
+    state = add_to_history(state, from_bot, message)
+    spawn_response(state, from_bot)
+    {:noreply, %{state | last_response: now}}
+  end
+
   # Rate limiting
 
   defp rate_limited?(%{last_response: nil}, _now), do: false
@@ -463,14 +493,8 @@ defmodule McFun.ChatBot do
     end
   end
 
-  # Regular chat from another bot — respond if nearby and within exchange limit
-  defp handle_message(state, username, message, :chat) do
-    if bot_nearby?(state.bot_name, username) and not heartbeat_message?(message) do
-      handle_bot_chat(state, username, message)
-    else
-      state
-    end
-  end
+  # Regular chat — handled by BotChat coordinator for bot-to-bot; ignored here
+  defp handle_message(state, _username, _message, :chat), do: state
 
   # LLM interaction
 
@@ -566,81 +590,6 @@ defmodule McFun.ChatBot do
       end
 
     %{state | conversations: conversations, last_active: last_active}
-  end
-
-  # Bot-to-bot chat
-
-  defp bot_nearby?(my_name, other_name) do
-    known_bots = McFun.BotSupervisor.list_bots()
-
-    if other_name in known_bots do
-      case {McFun.Bot.status(my_name), McFun.Bot.status(other_name)} do
-        {%{position: {x1, y1, z1}}, %{position: {x2, y2, z2}}}
-        when is_number(x1) and is_number(x2) ->
-          distance = :math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2 + (z2 - z1) ** 2)
-          distance <= @bot_chat_proximity
-
-        _ ->
-          false
-      end
-    else
-      false
-    end
-  rescue
-    _ -> false
-  end
-
-  defp heartbeat_message?(message) do
-    Enum.any?(@heartbeat_prompts, &String.contains?(message, &1))
-  end
-
-  defp handle_bot_chat(state, bot_name, message) do
-    now = System.monotonic_time(:millisecond)
-
-    case bot_chat_status(state, bot_name, now) do
-      :cooldown ->
-        Logger.debug("ChatBot #{state.bot_name}: bot-chat with #{bot_name} on cooldown")
-        state
-
-      :limit_reached ->
-        Logger.info("ChatBot #{state.bot_name}: bot-chat limit with #{bot_name}, cooling down")
-
-        %{
-          state
-          | bot_chat_counts: Map.put(state.bot_chat_counts, bot_name, 0),
-            bot_chat_cooldowns:
-              Map.put(state.bot_chat_cooldowns, bot_name, now + @bot_chat_cooldown_ms)
-        }
-
-      :rate_limited ->
-        state
-
-      {:ok, count} ->
-        Logger.info(
-          "ChatBot #{state.bot_name}: responding to nearby bot #{bot_name} (#{count + 1}/#{@bot_chat_max_exchanges})"
-        )
-
-        state = add_to_history(state, bot_name, message)
-        spawn_response(state, bot_name)
-
-        %{
-          state
-          | last_response: now,
-            bot_chat_counts: Map.put(state.bot_chat_counts, bot_name, count + 1)
-        }
-    end
-  end
-
-  defp bot_chat_status(state, bot_name, now) do
-    cooldown_until = Map.get(state.bot_chat_cooldowns, bot_name, 0)
-    count = Map.get(state.bot_chat_counts, bot_name, 0)
-
-    cond do
-      now < cooldown_until -> :cooldown
-      count >= @bot_chat_max_exchanges -> :limit_reached
-      rate_limited?(state, now) -> :rate_limited
-      true -> {:ok, count}
-    end
   end
 
   # Strip chain-of-thought from reasoning models.

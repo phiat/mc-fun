@@ -24,6 +24,7 @@ defmodule McFunWeb.DashboardLive do
 
       Phoenix.PubSub.subscribe(McFun.PubSub, "player_statuses")
       Phoenix.PubSub.subscribe(McFun.PubSub, "costs")
+      Phoenix.PubSub.subscribe(McFun.PubSub, "bot_chat")
       :timer.send_interval(3_000, self(), :refresh_status)
     end
 
@@ -49,6 +50,7 @@ defmodule McFunWeb.DashboardLive do
         sidebar_open: true,
         subscribed_bots: MapSet.new(initial_bots),
         cost_summary: McFun.CostTracker.get_global_cost(),
+        bot_chat_status: safe_bot_chat_status(),
         server_health: server_health(),
         failed_bots: %{},
         # Bot config modal
@@ -277,6 +279,11 @@ defmodule McFunWeb.DashboardLive do
   end
 
   @impl true
+  def handle_info({:bot_chat_updated, status}, socket) do
+    {:noreply, assign(socket, bot_chat_status: status)}
+  end
+
+  @impl true
   def handle_info({:cost_updated, summary}, socket) do
     {:noreply, assign(socket, cost_summary: summary)}
   end
@@ -376,24 +383,42 @@ defmodule McFunWeb.DashboardLive do
   defp build_single_bot_status(bot) do
     chatbot_running? = Registry.lookup(McFun.BotRegistry, {:chat_bot, bot}) != []
     chatbot_info = if chatbot_running?, do: try_chatbot_info(bot), else: nil
-    behavior_info = try_behavior_info(bot)
     bot_status = try_bot_status(bot)
 
-    %{
+    chatbot_fields(chatbot_info)
+    |> Map.merge(%{
       chatbot: chatbot_running?,
-      model: chatbot_info && chatbot_info[:model],
-      personality: chatbot_info && chatbot_info[:personality],
-      conversations: chatbot_info && chatbot_info[:conversations],
-      conversation_players: chatbot_info && chatbot_info[:conversation_players],
-      heartbeat_enabled: chatbot_info && chatbot_info[:heartbeat_enabled],
-      last_message: chatbot_info && chatbot_info[:last_message],
-      behavior: behavior_info,
+      behavior: try_behavior_info(bot),
       position: bot_status[:position],
       health: bot_status[:health],
       food: bot_status[:food],
       dimension: bot_status[:dimension],
       inventory: bot_status[:inventory] || [],
       cost: McFun.CostTracker.get_bot_cost(bot)
+    })
+  end
+
+  defp chatbot_fields(nil) do
+    %{
+      model: nil,
+      personality: nil,
+      conversations: nil,
+      conversation_players: nil,
+      heartbeat_enabled: nil,
+      group_chat_enabled: nil,
+      last_message: nil
+    }
+  end
+
+  defp chatbot_fields(info) do
+    %{
+      model: info[:model],
+      personality: info[:personality],
+      conversations: info[:conversations],
+      conversation_players: info[:conversation_players],
+      heartbeat_enabled: info[:heartbeat_enabled],
+      group_chat_enabled: info[:group_chat_enabled],
+      last_message: info[:last_message]
     }
   end
 
@@ -438,5 +463,13 @@ defmodule McFunWeb.DashboardLive do
       [{pid, _}] -> DynamicSupervisor.terminate_child(McFun.BotSupervisor, pid)
       [] -> :ok
     end
+  end
+
+  defp safe_bot_chat_status do
+    McFun.BotChat.status()
+  rescue
+    _ -> %{enabled: false, pairs: %{}, config: %{}}
+  catch
+    _, _ -> %{enabled: false, pairs: %{}, config: %{}}
   end
 end

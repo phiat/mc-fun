@@ -189,6 +189,14 @@ defmodule McFunWeb.DashboardComponents do
                 {if @status[:heartbeat_enabled], do: "ON", else: "OFF"}
               </button>
             </div>
+            <div class="flex justify-between items-center">
+              <span>GROUP CHAT</span>
+              <span class={
+                if(@status[:group_chat_enabled], do: "text-[#00ff88]", else: "text-[#ff4444]")
+              }>
+                {if @status[:group_chat_enabled], do: "ON", else: "OFF"}
+              </span>
+            </div>
             <%= if @status[:cost] && @status.cost.calls > 0 do %>
               <div class="flex justify-between">
                 <span>COST</span>

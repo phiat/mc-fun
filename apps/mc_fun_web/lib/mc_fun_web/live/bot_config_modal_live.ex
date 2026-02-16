@@ -161,6 +161,26 @@ defmodule McFunWeb.BotConfigModalLive do
               </button>
             </div>
 
+            <%!-- Group chat toggle --%>
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-[10px] tracking-wider text-[#888]">GROUP CHAT</label>
+                <div class="text-[9px] text-[#555]">Respond to nearby bots</div>
+              </div>
+              <button
+                phx-click="toggle_group_chat"
+                phx-target={@myself}
+                phx-value-bot={@bot}
+                phx-value-enabled={to_string(!(@status && @status[:group_chat_enabled]))}
+                class={"px-4 py-1.5 border text-[10px] tracking-widest transition-all " <>
+                  if(@status && @status[:group_chat_enabled],
+                    do: "border-[#00ff88] text-[#00ff88] hover:bg-[#00ff88]/10",
+                    else: "border-[#ff4444] text-[#ff4444] hover:bg-[#ff4444]/10")}
+              >
+                {if @status && @status[:group_chat_enabled], do: "ON", else: "OFF"}
+              </button>
+            </div>
+
             <%!-- Conversation history --%>
             <div>
               <div class="flex items-center justify-between mb-1">
@@ -503,6 +523,20 @@ defmodule McFunWeb.BotConfigModalLive do
     _, _ ->
       notify_parent(socket, {:flash, :error, "ChatBot not active for #{bot}"})
       {:noreply, socket}
+  end
+
+  def handle_event("toggle_group_chat", %{"bot" => bot, "enabled" => enabled}, socket) do
+    enabled? = enabled == "true"
+
+    try do
+      McFun.ChatBot.toggle_group_chat(bot, enabled?)
+      notify_parent(socket, :refresh_bot_statuses)
+    catch
+      _, _ ->
+        notify_parent(socket, {:flash, :error, "ChatBot not active for #{bot}"})
+    end
+
+    {:noreply, socket}
   end
 
   def handle_event("clear_conversation", %{"bot" => bot}, socket) do

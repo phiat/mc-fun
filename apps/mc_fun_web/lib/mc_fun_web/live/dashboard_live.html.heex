@@ -30,6 +30,10 @@
             ({McFun.CostTracker.format_tokens(@cost_summary.total_tokens)} tok)
           </span>
         </span>
+        <span :if={@bot_chat_status[:enabled]}>
+          CHAT:
+          <span class="text-[#aa66ff]">{map_size(@bot_chat_status[:pairs] || %{})} pairs</span>
+        </span>
         <span class="flex items-center gap-1">
           SERVER:
           <span class={[
@@ -106,6 +110,7 @@
       online_players={@online_players}
       available_models={@available_models}
       failed_bots={@failed_bots}
+      bot_chat_status={@bot_chat_status}
       parent_pid={self()}
     />
 
