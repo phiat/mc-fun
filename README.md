@@ -55,6 +55,14 @@ mix phx.server              # http://localhost:4000/dashboard
 ```
 Phoenix LiveView Dashboard (/dashboard)
     |
+    |-- DashboardLive -------- Parent LiveView (tab routing, PubSub, shared state)
+    |   |-- UnitsPanelLive     Bot deploy, cards, spawn/stop
+    |   |-- RconConsoleLive    RCON terminal, history, quick commands
+    |   |-- EventStreamLive    Real-time event log
+    |   |-- EffectsPanelLive   Effects, titles, entity picker
+    |   |-- DisplayPanelLive   Block text rendering
+    |   +-- BotConfigModalLive Bot config modal (model, personality, behaviors)
+    |
     |-- McFun.Bot ------------ bridge.js (mineflayer + pathfinder, Erlang Port)
     |   |-- dig, place, equip, craft, drop, goto, follow, jump, sneak, attack
     |   +-- status: position, health, food, dimension (polled every 5s)

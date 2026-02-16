@@ -106,13 +106,18 @@ MC Fun — System Architecture
 │  │  │    /api/webhooks/:action → WebhookController          │      │      │
 │  │  │                                                       │      │      │
 │  │  │  ┌─────────────────────────────────────────────────┐  │      │      │
-│  │  │  │  DashboardLive                                  │  │      │      │
+│  │  │  │  DashboardLive (parent LiveView)                │  │      │      │
 │  │  │  │                                                 │  │      │      │
-│  │  │  │  Tabs: UNITS | PLAYERS | RCON | FX | DISPLAY |  │  │      │      │
-│  │  │  │        EVENTS                                   │  │      │      │
+│  │  │  │  Tab routing, PubSub subs, shared state         │  │      │      │
+│  │  │  │  Subscribes: bot:*, mc_events:all, player_*     │  │      │      │
 │  │  │  │                                                 │  │      │      │
-│  │  │  │  Subscribes to PubSub: bot:*, mc_events:all,    │  │      │      │
-│  │  │  │    player_statuses                              │  │      │      │
+│  │  │  │  LiveComponents (one per tab):                  │  │      │      │
+│  │  │  │    UnitsPanelLive    — deploy, bot cards         │  │      │      │
+│  │  │  │    RconConsoleLive   — terminal, quick cmds      │  │      │      │
+│  │  │  │    EventStreamLive   — event log                 │  │      │      │
+│  │  │  │    EffectsPanelLive  — effects, titles            │  │      │      │
+│  │  │  │    DisplayPanelLive  — block text                 │  │      │      │
+│  │  │  │    BotConfigModalLive — bot config modal          │  │      │      │
 │  │  │  │                                                 │  │      │      │
 │  │  │  │  Async: RCON cmds & LLM calls via Task.start   │  │      │      │
 │  │  │  │    (results via send/2 to avoid blocking LV)    │  │      │      │

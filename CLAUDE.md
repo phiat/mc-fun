@@ -86,7 +86,15 @@ mc-fun/                              # repo root = umbrella root
 │       │   ├── application.ex       # web supervisor (Telemetry, DNSCluster, Endpoint)
 │       │   ├── endpoint.ex
 │       │   ├── router.ex            # / (home), /dashboard (LiveView), /api/webhooks/:action
-│       │   ├── live/dashboard_live.ex  # Main UI — tabs: UNITS, PLAYERS, RCON, FX, DISPLAY, EVENTS
+│       │   ├── live/
+│       │   │   ├── dashboard_live.ex       # Parent LiveView — tab routing, PubSub, shared state
+│       │   │   ├── dashboard_live.html.heex # Template — tab nav, delegates to LiveComponents
+│       │   │   ├── units_panel_live.ex     # UNITS tab — deploy config, bot cards, spawn/stop
+│       │   │   ├── rcon_console_live.ex    # RCON tab — terminal, history, quick commands
+│       │   │   ├── event_stream_live.ex    # EVENTS tab — real-time event log
+│       │   │   ├── effects_panel_live.ex   # FX tab — effects, titles, entity picker
+│       │   │   ├── display_panel_live.ex   # DISPLAY tab — block text, coord fill
+│       │   │   └── bot_config_modal_live.ex # Bot config modal — model, personality, behaviors
 │       │   ├── controllers/
 │       │   └── components/
 │       ├── priv/static/
@@ -119,6 +127,7 @@ After start: `McFun.Events.Handlers.register_all()` registers default event hand
 
 ## Key Patterns
 
+- **Dashboard LiveComponents**: Each tab is a LiveComponent (`UnitsPanelLive`, `RconConsoleLive`, `EventStreamLive`, `EffectsPanelLive`, `DisplayPanelLive`) plus `BotConfigModalLive` for the config modal. Components receive `parent_pid` and communicate back via `send(parent_pid, msg)` for flash/refresh. Cross-tab coord sharing uses `send_update/2`. Function components (`deploy_panel`, `bot_card`) accept a `target` attr for `phx-target` routing.
 - **Bot registry keys**: `"BotName"` (Bot), `{:chat_bot, "BotName"}` (ChatBot), `{:behavior, "BotName"}` (BotBehaviors)
 - **PubSub topics**: `"bot:#{name}"` for bot events, `McFun.Events` for game events
 - **Async in LiveView**: RCON commands and LLM calls use `Task.start` to avoid blocking the LiveView process. Results sent back via `send(lv, {:rcon_result, ...})`.
