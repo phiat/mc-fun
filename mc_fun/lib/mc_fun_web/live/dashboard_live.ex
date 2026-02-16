@@ -437,14 +437,16 @@ defmodule McFunWeb.DashboardLive do
       send(lv, {:status_update, players})
     end)
     models = safe_model_ids()
-    # Skip bot_statuses rebuild while config modal is open to avoid resetting form state
-    statuses =
-      if socket.assigns.selected_bot,
-        do: socket.assigns.bot_statuses,
-        else: build_bot_statuses()
+    # Refresh bots list (detects new/removed bots) but do NOT rebuild bot_statuses —
+    # those are updated incrementally via PubSub :bot_event messages.
+    current_bots = list_bots()
+    # Subscribe to any new bots we haven't seen yet
+    known = socket.assigns.bots
+    for bot <- current_bots, bot not in known do
+      Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{bot}")
+    end
     {:noreply, assign(socket,
-      bots: list_bots(),
-      bot_statuses: statuses,
+      bots: current_bots,
       rcon_status: check_rcon(),
       available_models: if(models != [], do: models, else: socket.assigns.available_models)
     )}
@@ -468,7 +470,10 @@ defmodule McFunWeb.DashboardLive do
     event = %{type: :"bot_#{event_type}", data: Map.put(event_data, "bot", bot_name), at: DateTime.utc_now()}
     McFun.EventStore.push(event)
     events = [event | Enum.take(socket.assigns.events, 199)]
-    {:noreply, assign(socket, events: events)}
+
+    # Incrementally update bot_statuses from PubSub events
+    statuses = apply_bot_event(socket.assigns.bot_statuses, bot_name, event_type, event_data)
+    {:noreply, assign(socket, events: events, bot_statuses: statuses)}
   end
 
   @impl true
@@ -519,6 +524,39 @@ defmodule McFunWeb.DashboardLive do
   end
   defp safe_int(_), do: 0
 
+  defp update_bot_status(statuses, bot_name, updates) when is_map(updates) do
+    case Map.get(statuses, bot_name) do
+      nil -> statuses
+      existing -> Map.put(statuses, bot_name, Map.merge(existing, updates))
+    end
+  end
+
+  defp apply_bot_event(statuses, bot_name, "health", %{"health" => health, "food" => food}) do
+    update_bot_status(statuses, bot_name, %{health: health, food: food})
+  end
+
+  defp apply_bot_event(statuses, bot_name, "position", event_data) do
+    updates = %{position: {event_data["x"], event_data["y"], event_data["z"]}}
+    updates =
+      case Map.get(event_data, "dimension") do
+        nil -> updates
+        dim -> Map.put(updates, :dimension, dim |> String.replace("minecraft:", "") |> String.replace("the_", ""))
+      end
+    update_bot_status(statuses, bot_name, updates)
+  end
+
+  defp apply_bot_event(statuses, bot_name, "spawn", %{"position" => pos} = event_data) do
+    updates = %{position: {pos["x"], pos["y"], pos["z"]}}
+    updates =
+      case Map.get(event_data, "dimension") do
+        nil -> updates
+        dim -> Map.put(updates, :dimension, dim |> String.replace("minecraft:", "") |> String.replace("the_", ""))
+      end
+    update_bot_status(statuses, bot_name, updates)
+  end
+
+  defp apply_bot_event(statuses, _bot_name, _event_type, _event_data), do: statuses
+
   defp build_bot_statuses do
     for bot <- list_bots(), into: %{} do
       chatbot_running? = Registry.lookup(McFun.BotRegistry, {:chat_bot, bot}) != []
@@ -542,7 +580,10 @@ defmodule McFunWeb.DashboardLive do
   end
 
   defp try_bot_status(bot_name) do
-    McFun.Bot.status(bot_name)
+    case McFun.Bot.status(bot_name) do
+      {:error, :not_found} -> %{position: nil, health: nil, food: nil, dimension: nil}
+      status when is_map(status) -> status
+    end
   catch
     _, _ -> %{position: nil, health: nil, food: nil, dimension: nil}
   end
@@ -770,7 +811,7 @@ defmodule McFunWeb.DashboardLive do
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              <div :for={bot <- @bots} class="border border-[#333] bg-[#111] p-3 hover:border-[#00ffff]/40 transition-all group">
+              <div :for={bot <- @bots} id={"bot-card-#{bot}"} class="border border-[#333] bg-[#111] p-3 hover:border-[#00ffff]/40 transition-all group">
                 <%!-- Unit header --%>
                 <div class="flex items-center justify-between mb-2">
                   <div class="flex items-center gap-2">
@@ -866,6 +907,7 @@ defmodule McFunWeb.DashboardLive do
                       <div class="pt-1 flex gap-1">
                         <button
                           :for={player <- @online_players}
+                          id={"tp-#{bot}-#{player}"}
                           phx-click="teleport_bot"
                           phx-value-bot={bot}
                           phx-value-player={player}
@@ -1023,7 +1065,7 @@ defmodule McFunWeb.DashboardLive do
                     </div>
                     <%= if status && status.conversation_players && status.conversation_players != [] do %>
                       <div class="bg-[#080810] border border-[#222] p-2 text-[10px] text-[#888] space-y-1 max-h-32 overflow-y-auto">
-                        <div :for={player <- status.conversation_players} class="flex items-center gap-2">
+                        <div :for={player <- status.conversation_players} id={"convo-#{bot}-#{player}"} class="flex items-center gap-2">
                           <span class="text-[#00ffff]">{player}</span>
                           <span class="text-[#444]">
                             {length(Map.get(status.conversations || %{}, player, []))} msgs
@@ -1157,6 +1199,7 @@ defmodule McFunWeb.DashboardLive do
                     <div class="flex flex-wrap gap-1">
                       <button
                         :for={player <- @online_players}
+                        id={"modal-tp-#{bot}-#{player}"}
                         phx-click="teleport_bot"
                         phx-value-bot={bot}
                         phx-value-player={player}
@@ -1205,7 +1248,7 @@ defmodule McFunWeb.DashboardLive do
         <div :if={@active_tab == "rcon"} class="border-2 border-[#333]/50 bg-[#0d0d14]">
           <div class="text-[10px] tracking-widest text-[#888] px-4 pt-3 pb-2">RCON TERMINAL</div>
           <div class="bg-[#080810] mx-2 mb-2 h-96 overflow-y-auto p-3 text-xs flex flex-col-reverse border border-[#222]">
-            <div :for={entry <- @rcon_history} class="mb-2">
+            <div :for={{entry, idx} <- Enum.with_index(@rcon_history)} id={"rcon-#{idx}"} class="mb-2">
               <div class="text-[#00ffff]">&gt; {entry.cmd}</div>
               <div class="text-[#888] whitespace-pre-wrap">{entry.result}</div>
             </div>
@@ -1281,7 +1324,7 @@ defmodule McFunWeb.DashboardLive do
             </div>
           </div>
           <div class="bg-[#080810] mx-2 mb-2 h-96 overflow-y-auto p-3 text-[11px] border border-[#222]">
-            <div :for={event <- @events} class="mb-0.5 flex gap-2">
+            <div :for={{event, idx} <- Enum.with_index(@events)} id={"event-#{idx}"} class="mb-0.5 flex gap-2">
               <span class="text-[#444] shrink-0">{Calendar.strftime(event.at, "%H:%M:%S")}</span>
               <span class={"shrink-0 " <> event_color(event.type)}>[{event.type}]</span>
               <span class="text-[#888]">{format_event_data(event.data)}</span>

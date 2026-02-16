@@ -35,35 +35,22 @@ defmodule McFun.BotBehaviors do
 
   @doc "Start a patrol route: bot walks between waypoints in a loop."
   def start_patrol(bot_name, waypoints) when is_list(waypoints) and length(waypoints) >= 2 do
-    stop(bot_name)
-
-    DynamicSupervisor.start_child(
-      McFun.BotSupervisor,
-      {__MODULE__, bot_name: bot_name, behavior: :patrol, params: %{waypoints: waypoints}}
-    )
+    start_behavior(bot_name, bot_name: bot_name, behavior: :patrol, params: %{waypoints: waypoints})
   end
 
   @doc "Start following a player: bot moves toward the target player."
   def start_follow(bot_name, target_player) when is_binary(target_player) do
-    stop(bot_name)
-
-    DynamicSupervisor.start_child(
-      McFun.BotSupervisor,
-      {__MODULE__, bot_name: bot_name, behavior: :follow, params: %{target: target_player}}
-    )
+    start_behavior(bot_name, bot_name: bot_name, behavior: :follow, params: %{target: target_player})
   end
 
   @doc "Start guarding a position: bot stays near a point and alerts on nearby players."
   def start_guard(bot_name, {_x, _y, _z} = pos, opts \\ []) do
-    stop(bot_name)
     radius = Keyword.get(opts, :radius, @guard_radius)
 
-    DynamicSupervisor.start_child(
-      McFun.BotSupervisor,
-      {__MODULE__,
-       bot_name: bot_name,
-       behavior: :guard,
-       params: %{position: pos, radius: radius, alerted: MapSet.new()}}
+    start_behavior(bot_name,
+      bot_name: bot_name,
+      behavior: :guard,
+      params: %{position: pos, radius: radius, alerted: MapSet.new()}
     )
   end
 
@@ -80,6 +67,23 @@ defmodule McFun.BotBehaviors do
     case Registry.lookup(McFun.BotRegistry, {:behavior, bot_name}) do
       [{_pid, _}] -> GenServer.call(via(bot_name), :info)
       [] -> {:error, :no_behavior}
+    end
+  end
+
+  defp start_behavior(bot_name, opts) do
+    stop(bot_name)
+
+    case DynamicSupervisor.start_child(McFun.BotSupervisor, {__MODULE__, opts}) do
+      {:ok, pid} ->
+        {:ok, pid}
+
+      {:error, {:already_started, _pid}} ->
+        # Race condition: another concurrent start won. Stop that one and retry once.
+        stop(bot_name)
+        DynamicSupervisor.start_child(McFun.BotSupervisor, {__MODULE__, opts})
+
+      error ->
+        error
     end
   end
 

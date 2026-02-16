@@ -47,7 +47,7 @@ defmodule McFun.Bot do
   def status(bot_name) do
     GenServer.call(via(bot_name), :status)
   catch
-    :exit, _ -> %{position: nil, health: nil, food: nil, dimension: nil}
+    :exit, _ -> {:error, :not_found}
   end
 
   @doc "Dig a block at the given coordinates."
@@ -163,13 +163,14 @@ defmodule McFun.Bot do
 
   @impl true
   def handle_info(:poll_position, state) do
-    try do
+    if Port.info(state.port) do
       json = Jason.encode!(%{action: "position"}) <> "\n"
       Port.command(state.port, json)
-    rescue
-      _ -> :ok
+      {:noreply, state}
+    else
+      Logger.warning("Bot #{state.name} port is dead, stopping GenServer")
+      {:stop, :port_dead, state}
     end
-    {:noreply, state}
   end
 
   @impl true

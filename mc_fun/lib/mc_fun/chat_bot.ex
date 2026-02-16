@@ -274,7 +274,7 @@ defmodule McFun.ChatBot do
 
     Logger.info("ChatBot #{state.bot_name}: sending to Groq [#{model}] for #{username} (#{length(messages)} msgs)")
 
-    Task.start(fn ->
+    Task.start_link(fn ->
       result =
         McFun.LLM.Groq.chat(state.personality, messages,
           max_tokens: 150,
