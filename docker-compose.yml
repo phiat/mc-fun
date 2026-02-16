@@ -1,0 +1,30 @@
+services:
+  minecraft:
+    image: itzg/minecraft-server
+    container_name: mc-server
+    ports:
+      - "25565:25565"
+      - "25575:25575"
+    environment:
+      EULA: "TRUE"
+      TYPE: PAPER
+      VERSION: "LATEST"
+      MEMORY: "4G"
+      MAX_PLAYERS: 10
+      MOTD: "mc-fun server"
+      DIFFICULTY: normal
+      VIEW_DISTANCE: 12
+      SIMULATION_DISTANCE: 8
+      SPAWN_PROTECTION: 0
+      ENABLE_COMMAND_BLOCK: "true"
+      SNOOPER_ENABLED: "false"
+      ENFORCE_WHITELIST: "true"
+      ENABLE_RCON: "true"
+      RCON_PASSWORD: "mcfun2026"
+      OPS: "DonaldMahanahan"
+      WHITELIST: "DonaldMahanahan,kurgenjlopp,McFunBot"
+    volumes:
+      - ./data:/data
+    stdin_open: true
+    tty: true
+    restart: unless-stopped

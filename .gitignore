@@ -1,0 +1,16 @@
+# Environment / secrets
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Data directory (MC world backups, local state)
+data/
