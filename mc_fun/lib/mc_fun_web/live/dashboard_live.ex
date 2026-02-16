@@ -600,7 +600,15 @@ defmodule McFunWeb.DashboardLive do
     spec = {McFun.ChatBot, opts}
     case DynamicSupervisor.start_child(McFun.BotSupervisor, spec) do
       {:ok, _} -> :ok
-      {:error, {:already_started, _}} -> :ok
+      {:error, {:already_started, _}} ->
+        # Update model/personality on existing ChatBot
+        try do
+          McFun.ChatBot.set_model(name, model)
+          if personality, do: McFun.ChatBot.set_personality(name, personality)
+        catch
+          _, _ -> :ok
+        end
+        :ok
       {:error, reason} -> {:error, reason}
     end
   end

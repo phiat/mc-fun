@@ -220,21 +220,37 @@ function handleCommand(cmd) {
       break;
 
     case 'goto': {
-      const { x, y, z } = cmd;
+      // Support both coordinate-based goto and player-name target
+      let gx, gy, gz;
+      if (cmd.target) {
+        const player = bot.players[cmd.target];
+        if (!player || !player.entity) {
+          send({ event: 'error', action: 'goto', message: `Player ${cmd.target} not found or not visible` });
+          break;
+        }
+        gx = player.entity.position.x;
+        gy = player.entity.position.y;
+        gz = player.entity.position.z;
+      } else {
+        gx = cmd.x;
+        gy = cmd.y;
+        gz = cmd.z;
+      }
+
       if (bot.pathfinder && bot.pathfinder.movements) {
-        bot.pathfinder.setGoal(new GoalBlock(x, y, z));
+        bot.pathfinder.setGoal(new GoalNear(gx, gy, gz, 2));
       } else {
         // Simple fallback: look toward target and walk
         const pos = bot.entity.position;
-        const dx = x - pos.x;
-        const dz = z - pos.z;
+        const dx = gx - pos.x;
+        const dz = gz - pos.z;
         const yaw = Math.atan2(-dx, dz);
         bot.look(yaw, 0, true);
         bot.setControlState('forward', true);
         if (movementTimer) clearTimeout(movementTimer);
         movementTimer = setTimeout(() => { bot.clearControlStates(); movementTimer = null; }, 3000);
       }
-      send({ event: 'ack', action: 'goto' });
+      send({ event: 'ack', action: 'goto', target: cmd.target || `${gx},${gy},${gz}` });
       break;
     }
 
