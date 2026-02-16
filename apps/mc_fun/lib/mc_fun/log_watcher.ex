@@ -224,13 +224,17 @@ defmodule McFun.LogWatcher do
       {:health, "execute as #{player} run data get entity @s Health"},
       {:food, "execute as #{player} run data get entity @s foodLevel"},
       {:position, "execute as #{player} run data get entity @s Pos"},
-      {:dimension, "execute as #{player} run data get entity @s Dimension"}
+      {:dimension, "execute as #{player} run data get entity @s Dimension"},
+      {:held_item, "execute as #{player} run data get entity @s SelectedItem"}
     ]
 
-    Enum.reduce(fields, %{health: nil, food: nil, position: nil, dimension: nil}, fn {key, cmd},
-                                                                                     acc ->
-      fetch_single_field(player, key, cmd, acc)
-    end)
+    Enum.reduce(
+      fields,
+      %{health: nil, food: nil, position: nil, dimension: nil, held_item: nil},
+      fn {key, cmd}, acc ->
+        fetch_single_field(player, key, cmd, acc)
+      end
+    )
   end
 
   defp fetch_single_field(player, key, cmd, acc) do
@@ -252,12 +256,14 @@ defmodule McFun.LogWatcher do
       health: data["Health"],
       food: data["foodLevel"],
       position: coerce_pos(data["Pos"]),
-      dimension: coerce_dimension(data["Dimension"])
+      dimension: coerce_dimension(data["Dimension"]),
+      held_item: coerce_held_item(data["SelectedItem"])
     }
   end
 
   defp coerce_field(:position, value), do: coerce_pos(value)
   defp coerce_field(:dimension, value), do: coerce_dimension(value)
+  defp coerce_field(:held_item, value), do: coerce_held_item(value)
   defp coerce_field(_key, value), do: value
 
   defp coerce_pos([x, y, z]), do: {x, y, z}
@@ -266,6 +272,10 @@ defmodule McFun.LogWatcher do
   defp coerce_dimension("minecraft:" <> dim), do: dim
   defp coerce_dimension(dim) when is_binary(dim), do: dim
   defp coerce_dimension(_), do: nil
+
+  defp coerce_held_item(%{"id" => "minecraft:" <> item}), do: item
+  defp coerce_held_item(%{"id" => item}) when is_binary(item), do: item
+  defp coerce_held_item(_), do: nil
 
   @doc false
   def parse_player_list(response) do

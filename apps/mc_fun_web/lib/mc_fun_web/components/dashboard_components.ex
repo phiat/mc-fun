@@ -229,6 +229,25 @@ defmodule McFunWeb.DashboardComponents do
                 <span class="text-[#aa66ff]">{String.upcase(@status.dimension)}</span>
               </div>
             <% end %>
+            <%!-- Inventory --%>
+            <%= if @status.inventory != [] do %>
+              <div class="pt-1 border-t border-[#222]">
+                <div class="text-[9px] text-[#666] mb-0.5">INVENTORY</div>
+                <div class="flex flex-wrap gap-x-2 gap-y-0.5">
+                  <span
+                    :for={item <- Enum.take(format_inventory(@status.inventory), 6)}
+                    class="text-[#aaa]"
+                  >
+                    {item}
+                  </span>
+                </div>
+                <%= if length(@status.inventory) > 6 do %>
+                  <div class="text-[9px] text-[#555] mt-0.5">
+                    +{length(@status.inventory) - 6} more
+                  </div>
+                <% end %>
+              </div>
+            <% end %>
             <%!-- Model switcher --%>
             <div class="pt-1 flex gap-1">
               <select
@@ -379,6 +398,13 @@ defmodule McFunWeb.DashboardComponents do
             <span class="text-[#aa66ff]">{String.upcase(@data.dimension)}</span>
           </div>
         <% end %>
+        <%!-- Held Item --%>
+        <%= if @data[:held_item] do %>
+          <div class="flex justify-between">
+            <span>HELD</span>
+            <span class="text-[#ffcc00]">{format_item_name(@data.held_item)}</span>
+          </div>
+        <% end %>
         <%!-- Fallback if no data --%>
         <%= if is_nil(@data.health) and is_nil(@data.position) do %>
           <div class="text-[#444]">Loading data...</div>
@@ -395,4 +421,30 @@ defmodule McFunWeb.DashboardComponents do
   defp format_behavior(%{behavior: :follow, params: %{target: t}}), do: "FOLLOW #{t}"
   defp format_behavior(%{behavior: :guard}), do: "GUARD"
   defp format_behavior(_), do: "ACTIVE"
+
+  defp format_inventory(items) when is_list(items) do
+    # Group by name and sum counts, then format as "NxName"
+    items
+    |> Enum.group_by(fn item -> item["name"] || item[:name] end)
+    |> Enum.map(fn {name, group} ->
+      count =
+        Enum.reduce(group, 0, fn item, acc -> acc + (item["count"] || item[:count] || 1) end)
+
+      "#{count}x #{format_item_name(name)}"
+    end)
+    |> Enum.sort_by(fn entry ->
+      case Integer.parse(entry) do
+        {n, _} -> -n
+        :error -> 0
+      end
+    end)
+  end
+
+  defp format_item_name(nil), do: "?"
+
+  defp format_item_name(name) when is_binary(name) do
+    name
+    |> String.replace("minecraft:", "")
+    |> String.replace("_", " ")
+  end
 end

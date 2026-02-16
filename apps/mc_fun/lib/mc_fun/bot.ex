@@ -6,7 +6,17 @@ defmodule McFun.Bot do
   use GenServer
   require Logger
 
-  defstruct [:name, :port, :listeners, :position, :health, :food, :dimension, :current_action]
+  defstruct [
+    :name,
+    :port,
+    :listeners,
+    :position,
+    :health,
+    :food,
+    :dimension,
+    :current_action,
+    inventory: []
+  ]
 
   # Client API
 
@@ -211,8 +221,9 @@ defmodule McFun.Bot do
 
     Logger.info("Bot #{name} starting, bridge port opened")
 
-    # Poll position every 5 seconds
+    # Poll position every 5 seconds, inventory every 10 seconds
     :timer.send_interval(5_000, self(), :poll_position)
+    :timer.send_interval(10_000, self(), :poll_inventory)
 
     {:ok, %__MODULE__{name: name, port: port, listeners: []}}
   end
@@ -269,7 +280,8 @@ defmodule McFun.Bot do
        position: state.position,
        health: state.health,
        food: state.food,
-       dimension: state.dimension
+       dimension: state.dimension,
+       inventory: state.inventory
      }, state}
   end
 
@@ -310,6 +322,16 @@ defmodule McFun.Bot do
   end
 
   @impl true
+  def handle_info(:poll_inventory, state) do
+    if Port.info(state.port) do
+      json = Jason.encode!(%{action: "inventory"}) <> "\n"
+      Port.command(state.port, json)
+    end
+
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info({port, {:data, {:noeol, _partial}}}, %{port: port} = state) do
     # partial line, ignore (will come as eol eventually)
     {:noreply, state}
@@ -334,6 +356,11 @@ defmodule McFun.Bot do
 
   defp update_state_from_event(state, %{"event" => "health", "health" => health, "food" => food}) do
     %{state | health: health, food: food}
+  end
+
+  defp update_state_from_event(state, %{"event" => "inventory", "items" => items})
+       when is_list(items) do
+    %{state | inventory: items}
   end
 
   defp update_state_from_event(state, %{"event" => "position"} = event) do

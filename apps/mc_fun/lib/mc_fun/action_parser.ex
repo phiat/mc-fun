@@ -59,15 +59,17 @@ defmodule McFun.ActionParser do
   defp patterns do
     [
       {:dig_looking_at,
-       ~r/i'll dig|let me dig|digging|i'll mine|let me mine|mining that|i'll break|breaking that/},
-      {:place, ~r/i'll place|placing|let me place|i'll build|building|let me build/},
+       ~r/i'll dig|let me dig|digging that|digging the|digging a|i'll mine|let me mine|mining that|mining the|mining a|i'll break|breaking that/},
+      {:place,
+       ~r/i'll place|placing a|placing the|let me place|i'll build|building a|building the|let me build/},
       {:jump, ~r/i'll jump|jumping|let me jump/},
       {:follow, ~r/following you|i'll follow|let me follow|right behind you/},
       {:goto,
        ~r/coming to you|on my way|i'll come|heading (to|your|over)|teleporting|going to you|let me come/},
-      {:craft, ~r/i'll craft|crafting|let me craft/},
-      {:equip, ~r/i'll equip|equipping|putting on|let me equip/},
-      {:drop, ~r/i'll drop|dropping|here you go|take this/},
+      {:craft, ~r/i'll craft|crafting a|crafting an|crafting some|let me craft/},
+      {:equip, ~r/i'll equip|equipping a|equipping the|equipping my|putting on|let me equip/},
+      {:drop,
+       ~r/i'll drop|dropping a|dropping an|dropping the|dropping my|here you go|take this/},
       {:attack, ~r/attacking|i'll attack|fighting|let me attack|i'll fight/},
       {:sneak, ~r/sneaking|crouching|i'll sneak|let me sneak/}
     ]

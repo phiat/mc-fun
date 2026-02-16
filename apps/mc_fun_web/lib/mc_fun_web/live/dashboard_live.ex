@@ -331,7 +331,8 @@ defmodule McFunWeb.DashboardLive do
          position: bot_status[:position],
          health: bot_status[:health],
          food: bot_status[:food],
-         dimension: bot_status[:dimension]
+         dimension: bot_status[:dimension],
+         inventory: bot_status[:inventory] || []
        }}
     end
   end
