@@ -6,12 +6,13 @@
   "links": [],
   "panels": [
     {
-      "title": "Server TPS",
+      "title": "Tick Rate (TPS)",
+      "description": "Ticks per second — healthy is 20. Derived from tick histogram.",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "minecraft_tps",
+          "expr": "rate(minecraft_tick_duration_seconds_count{job=\"minecraft-unified-metrics\"}[1m])",
           "legendFormat": "TPS",
           "refId": "A"
         }
@@ -39,7 +40,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "minecraft_players_count",
+          "expr": "minecraft_players_count{job=\"minecraft-unified-metrics\"}",
           "legendFormat": "Players",
           "refId": "A"
         }
@@ -62,24 +63,26 @@
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
       "targets": [
         {
-          "expr": "jvm_runtime_uptime_ms / 1000 / 3600",
+          "expr": "(time() - process_start_time_seconds{job=\"minecraft-unified-metrics\"}) / 3600",
           "legendFormat": "Hours",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "h"
+          "unit": "h",
+          "decimals": 1
         }
       }
     },
     {
       "title": "MSPT (ms per tick)",
+      "description": "Average milliseconds per tick. Over 50ms means server can't keep up with 20 TPS.",
       "type": "timeseries",
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 4 },
       "targets": [
         {
-          "expr": "minecraft_mspt",
+          "expr": "rate(minecraft_tick_duration_seconds_sum{job=\"minecraft-unified-metrics\"}[1m]) / rate(minecraft_tick_duration_seconds_count{job=\"minecraft-unified-metrics\"}[1m]) * 1000",
           "legendFormat": "MSPT",
           "refId": "A"
         }
@@ -87,6 +90,7 @@
       "fieldConfig": {
         "defaults": {
           "unit": "ms",
+          "decimals": 1,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -104,7 +108,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 4 },
       "targets": [
         {
-          "expr": "sum(minecraft_loaded_chunks)",
+          "expr": "sum(minecraft_world_loaded_chunks{job=\"minecraft-unified-metrics\"})",
           "legendFormat": "Chunks",
           "refId": "A"
         }
@@ -116,17 +120,17 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
       "targets": [
         {
-          "expr": "jvm_memory_heapmemoryusage_used",
+          "expr": "jvm_memory_heapmemoryusage_used{job=\"minecraft-jmx\"}",
           "legendFormat": "Used",
           "refId": "A"
         },
         {
-          "expr": "jvm_memory_heapmemoryusage_committed",
+          "expr": "jvm_memory_heapmemoryusage_committed{job=\"minecraft-jmx\"}",
           "legendFormat": "Committed",
           "refId": "B"
         },
         {
-          "expr": "jvm_memory_heapmemoryusage_max",
+          "expr": "jvm_memory_heapmemoryusage_max{job=\"minecraft-jmx\"}",
           "legendFormat": "Max",
           "refId": "C"
         }
@@ -144,8 +148,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "targets": [
         {
-          "expr": "rate(jvm_gc_collectioncount[1m])",
-          "legendFormat": "{{ collector }}",
+          "expr": "rate(jvm_gc_collection_seconds_count{job=\"minecraft-jmx\"}[1m])",
+          "legendFormat": "{{ gc }}",
           "refId": "A"
         }
       ],
@@ -162,8 +166,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
       "targets": [
         {
-          "expr": "rate(jvm_gc_collectiontime[1m])",
-          "legendFormat": "{{ collector }}",
+          "expr": "rate(jvm_gc_collection_seconds_sum{job=\"minecraft-jmx\"}[1m]) * 1000",
+          "legendFormat": "{{ gc }}",
           "refId": "A"
         }
       ],
@@ -180,17 +184,17 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
       "targets": [
         {
-          "expr": "jvm_threads_threadcount",
+          "expr": "jvm_threads_current{job=\"minecraft-jmx\"}",
           "legendFormat": "Live",
           "refId": "A"
         },
         {
-          "expr": "jvm_threads_daemonthreadcount",
+          "expr": "jvm_threads_daemon{job=\"minecraft-jmx\"}",
           "legendFormat": "Daemon",
           "refId": "B"
         },
         {
-          "expr": "jvm_threads_peakthreadcount",
+          "expr": "jvm_threads_peak{job=\"minecraft-jmx\"}",
           "legendFormat": "Peak",
           "refId": "C"
         }
@@ -207,7 +211,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
       "targets": [
         {
-          "expr": "minecraft_entities_count",
+          "expr": "minecraft_world_entities_count{job=\"minecraft-unified-metrics\"}",
           "legendFormat": "{{ world }}",
           "refId": "A"
         }
@@ -224,7 +228,7 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
       "targets": [
         {
-          "expr": "jvm_memory_pool_used",
+          "expr": "jvm_memory_pool_used_bytes{job=\"minecraft-jmx\"}",
           "legendFormat": "{{ pool }}",
           "refId": "A"
         }
@@ -242,7 +246,7 @@
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 32 },
       "targets": [
         {
-          "expr": "jvm_os_processcpuload * 100",
+          "expr": "process_cpu_load_ratio{job=\"minecraft-unified-metrics\"} * 100",
           "legendFormat": "CPU %",
           "refId": "A"
         }
@@ -268,7 +272,7 @@
       "gridPos": { "h": 6, "w": 6, "x": 6, "y": 32 },
       "targets": [
         {
-          "expr": "jvm_os_openfiledescriptorcount",
+          "expr": "process_open_fds{job=\"minecraft-jmx\"}",
           "legendFormat": "Open FDs",
           "refId": "A"
         }
@@ -280,7 +284,7 @@
       "gridPos": { "h": 6, "w": 6, "x": 12, "y": 32 },
       "targets": [
         {
-          "expr": "jvm_buffer_pool_memoryused{pool=\"direct\"}",
+          "expr": "jvm_buffer_pool_used_bytes{job=\"minecraft-jmx\",pool=\"direct\"}",
           "legendFormat": "Direct",
           "refId": "A"
         }
@@ -297,11 +301,60 @@
       "gridPos": { "h": 6, "w": 6, "x": 18, "y": 32 },
       "targets": [
         {
-          "expr": "jvm_classloading_loadedclasscount",
+          "expr": "jvm_classes_currently_loaded{job=\"minecraft-jmx\"}",
           "legendFormat": "Loaded",
           "refId": "A"
         }
       ]
+    },
+    {
+      "title": "Events (rate/min)",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 38 },
+      "targets": [
+        {
+          "expr": "rate(minecraft_events_join_total{job=\"minecraft-unified-metrics\"}[5m]) * 60",
+          "legendFormat": "Joins",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(minecraft_events_quit_total{job=\"minecraft-unified-metrics\"}[5m]) * 60",
+          "legendFormat": "Quits",
+          "refId": "B"
+        },
+        {
+          "expr": "rate(minecraft_events_chat_total{job=\"minecraft-unified-metrics\"}[5m]) * 60",
+          "legendFormat": "Chat",
+          "refId": "C"
+        },
+        {
+          "expr": "rate(minecraft_events_ping_total{job=\"minecraft-unified-metrics\"}[5m]) * 60",
+          "legendFormat": "Pings",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "title": "Players per World",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 38 },
+      "targets": [
+        {
+          "expr": "minecraft_world_players_count{job=\"minecraft-unified-metrics\"}",
+          "legendFormat": "{{ world }}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "fillOpacity": 10 }
+        }
+      }
     }
   ],
   "schemaVersion": 39,
