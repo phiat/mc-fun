@@ -1314,6 +1314,7 @@ defmodule McFunWeb.DashboardLive do
 
   defp format_event_data(data), do: inspect(data)
 
+  defp format_value(v) when is_float(v), do: :erlang.float_to_binary(v, decimals: 1)
   defp format_value(v) when is_map(v), do: inspect(v)
   defp format_value(v) when is_list(v), do: inspect(v)
   defp format_value(v), do: to_string(v)
