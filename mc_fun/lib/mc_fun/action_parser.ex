@@ -33,10 +33,12 @@ defmodule McFun.ActionParser do
   def parse(response, player) do
     text = String.downcase(response)
 
-    patterns()
-    |> Enum.filter(fn {_action, regex} -> Regex.match?(regex, text) end)
-    |> Enum.map(fn {action, _regex} -> {action, params_for(action, text, player)} end)
-    |> Enum.uniq_by(fn {action, _} -> action end)
+    # Take only the first (highest-priority) match to avoid conflicting actions.
+    # Pattern list is ordered by priority — dig before follow, follow before goto, etc.
+    case Enum.find(patterns(), fn {_action, regex} -> Regex.match?(regex, text) end) do
+      {action, _regex} -> [{action, params_for(action, text, player)}]
+      nil -> []
+    end
   end
 
   @doc """

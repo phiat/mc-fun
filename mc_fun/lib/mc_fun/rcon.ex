@@ -142,6 +142,12 @@ defmodule McFun.Rcon do
 
   defp reconnect(state) do
     if state.socket, do: :gen_tcp.close(state.socket)
+
+    # Reply to all pending callers so they don't block until timeout
+    for {_id, from} <- state.pending do
+      GenServer.reply(from, {:error, :connection_lost})
+    end
+
     state = %{state | socket: nil, pending: %{}}
 
     with {:ok, state} <- connect(state),

@@ -81,11 +81,7 @@ bot.on('health', () => {
 
 bot.on('death', () => {
   send({ event: 'death' });
-  log('Bot died, disconnecting');
-  setTimeout(() => {
-    try { bot.quit(); } catch (_) {}
-    process.exit(0);
-  }, 1000);
+  log('Bot died — event sent, letting Elixir decide lifecycle');
 });
 
 bot.on('kicked', (reason) => {
