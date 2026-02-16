@@ -25,11 +25,57 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/mc_fun_web"
 import topbar from "../vendor/topbar"
 
+// Custom LiveView hooks
+const Hooks = {
+  RconConsole: {
+    mounted() {
+      this.history = []
+      this.historyIndex = -1
+      this.draft = ""
+      const input = this.el.querySelector("input[name='command']")
+      if (!input) return
+
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "ArrowUp") {
+          e.preventDefault()
+          if (this.historyIndex === -1) this.draft = input.value
+          if (this.historyIndex < this.history.length - 1) {
+            this.historyIndex++
+            input.value = this.history[this.historyIndex]
+            this.pushEvent("rcon_input", {command: input.value})
+          }
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault()
+          if (this.historyIndex > 0) {
+            this.historyIndex--
+            input.value = this.history[this.historyIndex]
+            this.pushEvent("rcon_input", {command: input.value})
+          } else if (this.historyIndex === 0) {
+            this.historyIndex = -1
+            input.value = this.draft
+            this.pushEvent("rcon_input", {command: input.value})
+          }
+        }
+      })
+
+      this.el.addEventListener("submit", () => {
+        const cmd = input.value.trim()
+        if (cmd && (this.history.length === 0 || this.history[0] !== cmd)) {
+          this.history.unshift(cmd)
+          if (this.history.length > 50) this.history.pop()
+        }
+        this.historyIndex = -1
+        this.draft = ""
+      })
+    }
+  }
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: {...colocatedHooks, ...Hooks},
 })
 
 // Show progress bar on live navigation and form submits

@@ -177,14 +177,14 @@
         </div>
         <div :if={@rcon_history == []} class="text-[#333]">awaiting input...</div>
       </div>
-      <form phx-submit="rcon_submit" class="flex gap-2 px-4 pb-4">
+      <form phx-submit="rcon_submit" id="rcon-form" phx-hook="RconConsole" class="flex gap-2 px-4 pb-4">
         <input
           type="text"
           name="command"
           value={@rcon_input}
           phx-change="rcon_input"
           phx-debounce="300"
-          placeholder="enter rcon command..."
+          placeholder="enter rcon command... (↑↓ for history)"
           class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
           autocomplete="off"
         />

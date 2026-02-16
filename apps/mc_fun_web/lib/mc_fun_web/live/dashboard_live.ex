@@ -476,7 +476,7 @@ defmodule McFunWeb.DashboardLive do
 
   @impl true
   def handle_info({:rcon_result, cmd, result}, socket) do
-    entry = %{cmd: cmd, result: result, at: DateTime.utc_now()}
+    entry = %{cmd: cmd, result: strip_mc_formatting(result), at: DateTime.utc_now()}
     history = [entry | Enum.take(socket.assigns.rcon_history, 49)]
     {:noreply, assign(socket, rcon_history: history)}
   end
@@ -556,6 +556,13 @@ defmodule McFunWeb.DashboardLive do
   defp check_rcon do
     if Process.whereis(McFun.Rcon), do: :connected, else: :disconnected
   end
+
+  # Strip Minecraft § formatting codes (e.g. §e, §f, §r, §6, §7, §l, §o, §n, §k, §m)
+  defp strip_mc_formatting(text) when is_binary(text) do
+    String.replace(text, ~r/§[0-9a-fk-or]/i, "")
+  end
+
+  defp strip_mc_formatting(text), do: text
 
   defp safe_model_ids do
     ModelCache.model_ids()

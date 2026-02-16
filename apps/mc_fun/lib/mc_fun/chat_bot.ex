@@ -770,19 +770,19 @@ defmodule McFun.ChatBot do
   end
 
   defp execute_tool(bot, "activate_block", %{"x" => x, "y" => y, "z" => z}, _username) do
-    McFun.Bot.activate_block(bot, x, y, z)
+    McFun.Bot.send_command(bot, %{action: "activate_block", x: x, y: y, z: z}, source: :tool)
   end
 
   defp execute_tool(bot, "use_item", _args, _username) do
-    McFun.Bot.use_item(bot)
+    McFun.Bot.send_command(bot, %{action: "use_item"}, source: :tool)
   end
 
   defp execute_tool(bot, "sleep", _args, _username) do
-    McFun.Bot.sleep(bot)
+    McFun.Bot.send_command(bot, %{action: "sleep"}, source: :tool)
   end
 
   defp execute_tool(bot, "wake", _args, _username) do
-    McFun.Bot.wake(bot)
+    McFun.Bot.send_command(bot, %{action: "wake"}, source: :tool)
   end
 
   defp execute_tool(bot, "stop", _args, _username) do
