@@ -3,7 +3,7 @@
 ## What This Is
 
 Phoenix LiveView app that controls a Minecraft server via RCON and mineflayer bots.
-The MC server runs remotely on **miniwini-1** (Incus/LXC container named `minecraft`).
+The MC server runs remotely on a dedicated host (Incus/LXC container named `minecraft`).
 
 ## Running
 
@@ -149,10 +149,10 @@ After start: `McFun.Events.Handlers.register_all()` registers default event hand
 ## Remote Server
 
 ```bash
-ssh miniwini-1
+ssh <mc-server-host>                    # hostname from .env (RCON_HOST)
 incus exec minecraft -- <cmd>           # run command in MC container
 # Server path inside container: /opt/minecraft/server/
-# RCON: port 25575, password mcfun2026
+# RCON: port 25575, password <from .env>
 # MC: port 25565
 # Whitelisted: DonaldMahanahan, kurgenjlopp, McFunBot
 ```

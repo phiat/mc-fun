@@ -20,7 +20,7 @@ services:
       SNOOPER_ENABLED: "false"
       ENFORCE_WHITELIST: "true"
       ENABLE_RCON: "true"
-      RCON_PASSWORD: "mcfun2026"
+      RCON_PASSWORD: "${RCON_PASSWORD:-changeme}"
       OPS: "DonaldMahanahan"
       WHITELIST: "DonaldMahanahan,kurgenjlopp,McFunBot"
     volumes:

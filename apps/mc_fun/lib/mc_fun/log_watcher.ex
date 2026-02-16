@@ -2,7 +2,7 @@ defmodule McFun.LogWatcher do
   @moduledoc """
   GenServer that monitors Minecraft server events via RCON polling.
 
-  Since the MC server runs on a remote host (miniwini-1), we can't read the
+  Since the MC server runs on a remote host, we can't read the
   log file directly. Instead, we poll via RCON `list` command to detect
   player joins/leaves, and subscribe to bot events for chat.
 

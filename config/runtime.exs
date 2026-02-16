@@ -10,13 +10,13 @@ env =
 
 # RCON configuration
 config :mc_fun, :rcon,
-  host: Map.get(env, "RCON_HOST", "miniwini-1"),
+  host: Map.get(env, "RCON_HOST", "localhost"),
   port: String.to_integer(Map.get(env, "RCON_PORT", "25575")),
   password: Map.get(env, "RCON_PASSWORD", "")
 
 # Minecraft server (for mineflayer)
 config :mc_fun, :minecraft,
-  host: Map.get(env, "MC_HOST", "miniwini-1"),
+  host: Map.get(env, "MC_HOST", "localhost"),
   port: String.to_integer(Map.get(env, "MC_PORT", "25565"))
 
 # Groq API
