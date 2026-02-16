@@ -174,10 +174,65 @@ defmodule McFun.LogWatcher do
   end
 
   defp fetch_single_player_data(player) do
-    case McFun.Rcon.command("data get entity #{player}") do
-      {:ok, response} -> parse_entity_data(response)
-      {:error, _} -> %{health: nil, food: nil, position: nil, dimension: nil}
+    case McFun.Rcon.command("execute as #{player} run data get entity @s") do
+      {:ok, response} ->
+        data = parse_entity_data(response)
+
+        if data.health == nil and data.position == nil do
+          Logger.warning(
+            "LogWatcher: failed to parse entity data for #{player}: #{String.slice(response, 0, 200)}"
+          )
+
+          fetch_player_data_fields(player)
+        else
+          data
+        end
+
+      {:error, reason} ->
+        Logger.warning("LogWatcher: entity data command failed for #{player}: #{inspect(reason)}")
+        fetch_player_data_fields(player)
     end
+  end
+
+  defp fetch_player_data_fields(player) do
+    fields = [
+      {:health, "execute as #{player} run data get entity @s Health"},
+      {:food, "execute as #{player} run data get entity @s foodLevel"},
+      {:position, "execute as #{player} run data get entity @s Pos"},
+      {:dimension, "execute as #{player} run data get entity @s Dimension"}
+    ]
+
+    Enum.reduce(fields, %{health: nil, food: nil, position: nil, dimension: nil}, fn {key, cmd},
+                                                                                     acc ->
+      case McFun.Rcon.command(cmd) do
+        {:ok, response} ->
+          value = parse_field(key, response)
+          Map.put(acc, key, value)
+
+        {:error, reason} ->
+          Logger.warning(
+            "LogWatcher: field query #{key} failed for #{player}: #{inspect(reason)}"
+          )
+
+          acc
+      end
+    end)
+  end
+
+  defp parse_field(:health, response), do: parse_nbt_float(response, ~r/(-?[\d.]+)f?$/)
+  defp parse_field(:food, response), do: parse_nbt_int(response, ~r/(\d+)$/)
+
+  defp parse_field(:position, response) do
+    parse_nbt_position(response) ||
+      case Regex.run(~r/\[([-\d.]+)d?,\s*([-\d.]+)d?,\s*([-\d.]+)d?\]/, response) do
+        [_, x, y, z] -> {safe_float(x), safe_float(y), safe_float(z)}
+        nil -> nil
+      end
+  end
+
+  defp parse_field(:dimension, response) do
+    parse_nbt_match(response, ~r/"minecraft:(\w+)"/) ||
+      parse_nbt_match(response, ~r/minecraft:(\w+)/)
   end
 
   defp parse_entity_data(response) do
@@ -224,7 +279,8 @@ defmodule McFun.LogWatcher do
     end
   end
 
-  defp parse_player_list(response) do
+  @doc false
+  def parse_player_list(response) do
     # Response format: "There are X of a max of Y players online: player1, player2"
     case Regex.run(~r/players online:\s*(.+)$/, response) do
       [_, players_str] ->
