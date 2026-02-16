@@ -163,6 +163,7 @@
         />
         <button
           type="submit"
+          phx-disable-with="..."
           class="px-4 py-2 border border-[#00ffff] text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10"
         >
           EXEC
@@ -189,6 +190,7 @@
           :for={effect <- ["celebration", "welcome", "death", "achievement", "firework"]}
           phx-click="fire_effect"
           phx-value-effect={effect}
+          phx-disable-with="..."
           class="px-4 py-2 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10 hover:border-[#aa66ff] transition-all"
         >
           {String.upcase(effect)}
@@ -227,6 +229,7 @@
         </div>
         <button
           type="submit"
+          phx-disable-with="RENDERING..."
           class="px-6 py-2 border-2 border-[#00ffff] text-[#00ffff] text-[10px] tracking-widest font-bold hover:bg-[#00ffff] hover:text-[#0a0a0f] transition-all"
         >
           RENDER

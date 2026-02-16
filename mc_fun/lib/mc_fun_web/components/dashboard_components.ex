@@ -96,6 +96,7 @@ defmodule McFunWeb.DashboardComponents do
         <div class="flex items-center justify-between">
           <button
             type="submit"
+            phx-disable-with="DEPLOYING..."
             class="py-2 px-6 border-2 border-[#00ff88] text-[#00ff88] font-bold text-xs tracking-widest hover:bg-[#00ff88] hover:text-[#0a0a0f] transition-all"
           >
             DEPLOY
@@ -479,9 +480,9 @@ defmodule McFunWeb.DashboardComponents do
                 <div class="grid grid-cols-4 gap-2">
                   <div :for={
                     {label, name, default} <- [
-                      {"X", "x", "0"},
-                      {"Y", "y", "64"},
-                      {"Z", "z", "0"},
+                      {"X", "x", guard_default(@status, :x, "0")},
+                      {"Y", "y", guard_default(@status, :y, "64")},
+                      {"Z", "z", guard_default(@status, :z, "0")},
                       {"R", "radius", "8"}
                     ]
                   }>
@@ -613,4 +614,9 @@ defmodule McFunWeb.DashboardComponents do
   defp format_behavior(%{behavior: :follow, params: %{target: t}}), do: "FOLLOW #{t}"
   defp format_behavior(%{behavior: :guard}), do: "GUARD"
   defp format_behavior(_), do: "ACTIVE"
+
+  defp guard_default(%{position: {x, _y, _z}}, :x, _fallback) when is_number(x), do: to_string(trunc(x))
+  defp guard_default(%{position: {_x, y, _z}}, :y, _fallback) when is_number(y), do: to_string(trunc(y))
+  defp guard_default(%{position: {_x, _y, z}}, :z, _fallback) when is_number(z), do: to_string(trunc(z))
+  defp guard_default(_, _, fallback), do: fallback
 end
