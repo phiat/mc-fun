@@ -19,7 +19,7 @@ defmodule McFun.LogWatcher do
 
   @default_poll_interval 2_000
   # Player data is fetched less frequently to reduce RCON load
-  @default_data_poll_multiplier 5
+  @default_data_poll_multiplier 3
 
   # MC server log patterns (used when tailing a local log file)
   @patterns [

@@ -221,9 +221,9 @@ defmodule McFun.Bot do
 
     Logger.info("Bot #{name} starting, bridge port opened")
 
-    # Poll position every 5 seconds, inventory every 10 seconds
-    :timer.send_interval(5_000, self(), :poll_position)
-    :timer.send_interval(10_000, self(), :poll_inventory)
+    # Poll position every 3 seconds, inventory every 5 seconds (port commands, no RCON cost)
+    :timer.send_interval(3_000, self(), :poll_position)
+    :timer.send_interval(5_000, self(), :poll_inventory)
 
     {:ok, %__MODULE__{name: name, port: port, listeners: []}}
   end

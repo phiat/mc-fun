@@ -21,7 +21,7 @@ defmodule McFunWeb.DashboardLive do
       end
 
       Phoenix.PubSub.subscribe(McFun.PubSub, "player_statuses")
-      :timer.send_interval(5_000, self(), :refresh_status)
+      :timer.send_interval(3_000, self(), :refresh_status)
     end
 
     models = safe_model_ids()
