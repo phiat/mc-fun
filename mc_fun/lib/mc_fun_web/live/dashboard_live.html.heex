@@ -134,7 +134,7 @@
       <form phx-submit="rcon_submit" class="flex gap-2 px-4 pb-4">
         <input
           type="text" name="command" value={@rcon_input}
-          phx-change="rcon_input" placeholder="enter rcon command..."
+          phx-change="rcon_input" phx-debounce="300" placeholder="enter rcon command..."
           class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
           autocomplete="off"
         />
@@ -150,7 +150,7 @@
       <div class="flex items-center gap-2 mb-4">
         <span class="text-[10px] tracking-wider text-[#666]">TARGET</span>
         <input
-          type="text" value={@effect_target} phx-change="set_effect_target" name="target"
+          type="text" value={@effect_target} phx-change="set_effect_target" phx-debounce="300" name="target"
           class="bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-1.5 text-xs w-40 focus:border-[#00ffff] focus:outline-none"
         />
       </div>

@@ -25,6 +25,9 @@ function log(msg) {
   process.stderr.write(`[bridge] ${msg}\n`);
 }
 
+// Track movement fallback timers to avoid leaks
+let movementTimer = null;
+
 log(`Connecting as ${username} to ${host}:${port}`);
 
 const bot = mineflayer.createBot({
@@ -146,7 +149,8 @@ function handleCommand(cmd) {
         const yaw = Math.atan2(-dx, dz);
         bot.look(yaw, 0, true);
         bot.setControlState('forward', true);
-        setTimeout(() => bot.clearControlStates(), 2000);
+        if (movementTimer) clearTimeout(movementTimer);
+        movementTimer = setTimeout(() => { bot.clearControlStates(); movementTimer = null; }, 2000);
       }
       send({ event: 'ack', action: 'move' });
       break;
@@ -227,7 +231,8 @@ function handleCommand(cmd) {
         const yaw = Math.atan2(-dx, dz);
         bot.look(yaw, 0, true);
         bot.setControlState('forward', true);
-        setTimeout(() => bot.clearControlStates(), 3000);
+        if (movementTimer) clearTimeout(movementTimer);
+        movementTimer = setTimeout(() => { bot.clearControlStates(); movementTimer = null; }, 3000);
       }
       send({ event: 'ack', action: 'goto' });
       break;
@@ -248,7 +253,8 @@ function handleCommand(cmd) {
           const yaw = Math.atan2(-dx, dz);
           bot.look(yaw, 0, true);
           bot.setControlState('forward', true);
-          setTimeout(() => bot.clearControlStates(), 2000);
+          if (movementTimer) clearTimeout(movementTimer);
+          movementTimer = setTimeout(() => { bot.clearControlStates(); movementTimer = null; }, 2000);
         }
         send({ event: 'ack', action: 'follow', target: cmd.target });
       } else {

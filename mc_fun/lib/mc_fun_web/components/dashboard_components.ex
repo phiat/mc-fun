@@ -91,6 +91,7 @@ defmodule McFunWeb.DashboardComponents do
             name="name"
             value={@bot_spawn_name}
             phx-change="bot_name_input"
+            phx-debounce="300"
             placeholder="custom unit name..."
             class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-1.5 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
           />

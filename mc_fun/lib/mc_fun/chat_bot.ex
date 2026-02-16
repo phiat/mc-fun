@@ -17,6 +17,8 @@ defmodule McFun.ChatBot do
   require Logger
 
   @max_history 20
+  @max_players 50
+  @conversation_ttl_ms :timer.hours(1)
   @rate_limit_ms 2_000
   @max_response_length 200
   @default_model "openai/gpt-oss-20b"
@@ -26,6 +28,7 @@ defmodule McFun.ChatBot do
     :personality,
     :model,
     conversations: %{},
+    last_active: %{},
     last_response: nil
   ]
 
@@ -289,13 +292,45 @@ defmodule McFun.ChatBot do
   defp add_to_history(state, username, message) do
     history = Map.get(state.conversations, username, [])
     history = [{:player, message} | history] |> Enum.take(@max_history)
-    put_in(state.conversations[username], history)
+    state = %{state | conversations: Map.put(state.conversations, username, history)}
+    touch_and_evict(state, username)
   end
 
   defp add_bot_response(state, username, response) do
     history = Map.get(state.conversations, username, [])
     history = [{:bot, response} | history] |> Enum.take(@max_history)
-    put_in(state.conversations[username], history)
+    %{state | conversations: Map.put(state.conversations, username, history)}
+  end
+
+  # Track last activity and evict stale/excess conversations
+  defp touch_and_evict(state, username) do
+    now = System.monotonic_time(:millisecond)
+    last_active = Map.put(state.last_active, username, now)
+
+    # Evict conversations inactive for > TTL
+    expired =
+      last_active
+      |> Enum.filter(fn {_player, ts} -> now - ts > @conversation_ttl_ms end)
+      |> Enum.map(fn {player, _} -> player end)
+
+    conversations = Map.drop(state.conversations, expired)
+    last_active = Map.drop(last_active, expired)
+
+    # If still over cap, evict oldest
+    {conversations, last_active} =
+      if map_size(conversations) > @max_players do
+        oldest =
+          last_active
+          |> Enum.sort_by(fn {_, ts} -> ts end)
+          |> Enum.take(map_size(conversations) - @max_players)
+          |> Enum.map(fn {player, _} -> player end)
+
+        {Map.drop(conversations, oldest), Map.drop(last_active, oldest)}
+      else
+        {conversations, last_active}
+      end
+
+    %{state | conversations: conversations, last_active: last_active}
   end
 
   defp truncate(text, max_len) do
