@@ -3,7 +3,9 @@ defmodule McFunWeb.DashboardLive do
   LiveView dashboard for MC Fun — bot management, RCON console,
   effects panel, event log, and display tools.
 
-  Inspired by lilbots-01 command center UI.
+  Tab content is delegated to LiveComponents:
+  - RconConsoleLive, EventStreamLive, EffectsPanelLive,
+    DisplayPanelLive, BotConfigModalLive
   """
   use McFunWeb, :live_view
 
@@ -28,7 +30,6 @@ defmodule McFunWeb.DashboardLive do
       socket
       |> assign(
         page_title: "MC Fun",
-        rcon_input: "",
         rcon_history: [],
         bots: list_bots(),
         bot_statuses: build_bot_statuses(),
@@ -39,17 +40,14 @@ defmodule McFunWeb.DashboardLive do
         available_models: models,
         events: McFun.EventStore.list(),
         effect_target: "@a",
-        display_text: "",
         display_x: "0",
         display_y: "80",
         display_z: "0",
-        display_block: "diamond_block",
         online_players: [],
         player_statuses: %{},
         rcon_status: check_rcon(),
         active_tab: "bots",
         sidebar_open: true,
-        rcon_quick_open: false,
         # Bot config modal
         selected_bot: nil,
         modal_tab: "llm"
@@ -91,7 +89,6 @@ defmodule McFunWeb.DashboardLive do
     personality = socket.assigns.deploy_personality
 
     if name in socket.assigns.bots do
-      # Bot already running — update ChatBot model/personality
       ensure_chatbot(name, model, personality)
 
       {:noreply,
@@ -130,7 +127,6 @@ defmodule McFunWeb.DashboardLive do
   def handle_event("stop_bot", %{"name" => name}, socket) do
     stop_chatbot(name)
     McFun.BotSupervisor.stop_bot(name)
-    # Optimistically remove the bot; schedule a refresh to catch async cleanup
     bots = Enum.reject(socket.assigns.bots, &(&1 == name))
     statuses = Map.delete(socket.assigns.bot_statuses, name)
     Process.send_after(self(), :refresh_bots, 200)
@@ -143,7 +139,6 @@ defmodule McFunWeb.DashboardLive do
       McFun.BotSupervisor.stop_bot(bot)
     end
 
-    # Optimistically clear; schedule a refresh to catch async cleanup
     Process.send_after(self(), :refresh_bots, 200)
     {:noreply, assign(socket, bots: [], bot_statuses: %{})}
   end
@@ -158,41 +153,7 @@ defmodule McFunWeb.DashboardLive do
     {:noreply, assign(socket, selected_bot: nil)}
   end
 
-  def handle_event("switch_modal_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, modal_tab: tab)}
-  end
-
-  def handle_event("save_personality", %{"bot" => bot, "personality" => personality}, socket) do
-    McFun.ChatBot.set_personality(bot, personality)
-
-    {:noreply,
-     socket
-     |> put_flash(:info, "#{bot} personality updated")
-     |> assign(bot_statuses: build_bot_statuses())}
-  catch
-    _, _ -> {:noreply, put_flash(socket, :error, "ChatBot not active for #{bot}")}
-  end
-
-  def handle_event("clear_conversation", %{"bot" => bot}, socket) do
-    # Send reset command through the bot's chat
-    # Clear all conversations by iterating known players
-    info = McFun.ChatBot.info(bot)
-
-    for _player <- info[:conversation_players] || [] do
-      McFun.ChatBot.set_personality(bot, info[:personality] || default_personality())
-    end
-
-    McFun.Bot.chat(bot, "Memory cleared!")
-
-    {:noreply,
-     socket
-     |> put_flash(:info, "#{bot} conversations cleared")
-     |> assign(bot_statuses: build_bot_statuses())}
-  catch
-    _, _ -> {:noreply, put_flash(socket, :error, "ChatBot not active for #{bot}")}
-  end
-
-  # --- Preset Selection ---
+  # --- Preset Selection (deploy panel) ---
 
   def handle_event("select_preset", %{"preset" => "custom"}, socket) do
     {:noreply, assign(socket, selected_preset: nil, deploy_personality: default_personality())}
@@ -226,192 +187,11 @@ defmodule McFunWeb.DashboardLive do
     {:noreply, assign(socket, deploy_personality: p)}
   end
 
-  def handle_event("apply_preset_to_bot", %{"bot" => bot, "preset" => preset_id}, socket) do
-    preset_atom =
-      try do
-        String.to_existing_atom(preset_id)
-      rescue
-        ArgumentError -> nil
-      end
-
-    case preset_atom && McFun.Presets.get(preset_atom) do
-      {:ok, preset} ->
-        # Append preset personality onto the base MC personality
-        combined =
-          String.trim(default_personality()) <> "\n\n" <> String.trim(preset.system_prompt)
-
-        try do
-          McFun.ChatBot.set_personality(bot, combined)
-
-          {:noreply,
-           socket
-           |> put_flash(:info, "#{bot} >> #{preset.name}")
-           |> assign(bot_statuses: build_bot_statuses())}
-        catch
-          _, _ -> {:noreply, put_flash(socket, :error, "ChatBot not active for #{bot}")}
-        end
-
-      _ ->
-        {:noreply, put_flash(socket, :error, "Preset not found: #{preset_id}")}
-    end
-  end
-
-  # --- Bot Actions ---
-
-  def handle_event("bot_action_chat", %{"bot" => bot, "message" => msg}, socket) when msg != "" do
-    McFun.Bot.chat(bot, msg)
-    {:noreply, put_flash(socket, :info, "#{bot}: #{msg}")}
-  end
-
-  def handle_event("bot_action_chat", _, socket), do: {:noreply, socket}
-
-  def handle_event("bot_action_goto", params, socket) do
-    bot = params["bot"]
-    x = safe_int(params["x"])
-    y = safe_int(params["y"])
-    z = safe_int(params["z"])
-    McFun.Bot.send_command(bot, %{action: "goto", x: x, y: y, z: z})
-    {:noreply, put_flash(socket, :info, "#{bot} >> goto #{x},#{y},#{z}")}
-  end
-
-  def handle_event("bot_action_jump", %{"bot" => bot}, socket) do
-    McFun.Bot.send_command(bot, %{action: "jump"})
-    {:noreply, socket}
-  end
-
-  def handle_event("bot_action_sneak", %{"bot" => bot}, socket) do
-    McFun.Bot.send_command(bot, %{action: "sneak"})
-    {:noreply, socket}
-  end
-
-  def handle_event("bot_action_attack", %{"bot" => bot}, socket) do
-    McFun.Bot.send_command(bot, %{action: "attack"})
-    {:noreply, socket}
-  end
-
-  # --- Behavior Controls ---
-
-  def handle_event("start_behavior_patrol", %{"bot" => bot, "waypoints" => wp_json}, socket) do
-    case Jason.decode(wp_json) do
-      {:ok, waypoints} when is_list(waypoints) ->
-        tuples = Enum.map(waypoints, fn [x, y, z] -> {x, y, z} end)
-        McFun.BotBehaviors.start_patrol(bot, tuples)
-
-        {:noreply,
-         socket
-         |> put_flash(:info, "#{bot} patrol started (#{length(tuples)} waypoints)")
-         |> assign(bot_statuses: build_bot_statuses())}
-
-      _ ->
-        {:noreply, put_flash(socket, :error, "Invalid waypoints JSON. Use [[x,y,z], ...]")}
-    end
-  end
-
-  def handle_event("start_behavior_follow", params, socket) do
-    bot = params["bot"]
-    target = params["target"]
-
-    if target && target != "" do
-      McFun.BotBehaviors.start_follow(bot, target)
-
-      {:noreply,
-       socket
-       |> put_flash(:info, "#{bot} following #{target}")
-       |> assign(bot_statuses: build_bot_statuses())}
-    else
-      {:noreply, put_flash(socket, :error, "Select a player to follow")}
-    end
-  end
-
-  def handle_event("start_behavior_guard", params, socket) do
-    bot = params["bot"]
-    x = safe_int(params["x"])
-    y = safe_int(params["y"])
-    z = safe_int(params["z"])
-    radius = safe_int(params["radius"] || "8")
-    McFun.BotBehaviors.start_guard(bot, {x, y, z}, radius: radius)
-
-    {:noreply,
-     socket
-     |> put_flash(:info, "#{bot} guarding #{x},#{y},#{z} (r=#{radius})")
-     |> assign(bot_statuses: build_bot_statuses())}
-  end
-
-  def handle_event("stop_behavior", %{"bot" => bot}, socket) do
-    McFun.BotBehaviors.stop(bot)
-
-    {:noreply,
-     socket
-     |> put_flash(:info, "#{bot} behavior stopped")
-     |> assign(bot_statuses: build_bot_statuses())}
-  end
-
-  # --- RCON Console ---
-
-  def handle_event("rcon_submit", %{"command" => cmd}, socket) when cmd != "" do
-    lv = self()
-
-    Task.start(fn ->
-      result =
-        case McFun.Rcon.command(cmd) do
-          {:ok, response} -> response
-          {:error, reason} -> "ERR: #{inspect(reason)}"
-        end
-
-      send(lv, {:rcon_result, cmd, result})
-    end)
-
-    {:noreply, assign(socket, rcon_input: "")}
-  end
-
-  def handle_event("rcon_submit", _, socket), do: {:noreply, socket}
-
-  def handle_event("rcon_input", %{"command" => val}, socket) do
-    {:noreply, assign(socket, rcon_input: val)}
-  end
-
-  # --- Effects ---
-
-  def handle_event("fire_effect", %{"effect" => effect}, socket) do
-    target = socket.assigns.effect_target
-
-    Task.start(fn ->
-      case effect do
-        "celebration" -> McFun.Effects.celebration(target)
-        "welcome" -> McFun.Effects.welcome(target)
-        "death" -> McFun.Effects.death_effect(target)
-        "achievement" -> McFun.Effects.achievement_fanfare(target)
-        "firework" -> McFun.Effects.firework(target)
-        _ -> :ok
-      end
-    end)
-
-    {:noreply, put_flash(socket, :info, "FX #{effect} >> #{target}")}
-  end
-
-  def handle_event("set_effect_target", %{"target" => target}, socket) do
-    {:noreply, assign(socket, effect_target: target)}
-  end
-
-  def handle_event("pick_effect_target", %{"target" => target}, socket) do
-    {:noreply, assign(socket, effect_target: target)}
-  end
-
-  def handle_event("fire_title", %{"title" => title} = params, socket) when title != "" do
-    target = socket.assigns.effect_target
-    subtitle = params["subtitle"]
-    opts = if subtitle && subtitle != "", do: [subtitle: subtitle], else: []
-
-    Task.start(fn -> McFun.Effects.title(target, title, opts) end)
-
-    {:noreply, put_flash(socket, :info, "Title >> #{target}: #{title}")}
-  end
-
-  def handle_event("fire_title", _, socket), do: {:noreply, socket}
-
   # --- Coord Sharing ---
 
   def handle_event("use_coords", %{"x" => x, "y" => y, "z" => z, "name" => name}, socket) do
+    send_update(McFunWeb.EffectsPanelLive, id: "effects-panel", effect_target: name)
+
     {:noreply,
      assign(socket,
        display_x: x,
@@ -421,99 +201,26 @@ defmodule McFunWeb.DashboardLive do
      )}
   end
 
-  # --- Display Entity Picker ---
-
-  def handle_event("pick_display_entity", %{"entity" => ""}, socket), do: {:noreply, socket}
-
-  def handle_event("pick_display_entity", %{"entity" => name}, socket) do
-    case lookup_entity_position(socket.assigns, name) do
-      {x, y, z} ->
-        {:noreply,
-         assign(socket,
-           display_x: to_string(trunc(x)),
-           display_y: to_string(trunc(y)),
-           display_z: to_string(trunc(z))
-         )}
-
-      nil ->
-        {:noreply, socket}
-    end
-  end
-
-  # --- RCON Quick Commands ---
-
-  def handle_event("toggle_rcon_quick", _params, socket) do
-    {:noreply, assign(socket, rcon_quick_open: !socket.assigns.rcon_quick_open)}
-  end
-
-  def handle_event("rcon_quick", %{"cmd" => "say", "message" => msg}, socket) do
-    run_rcon(socket, "say #{msg}")
-  end
-
-  def handle_event("rcon_quick", %{"cmd" => "give"} = p, socket) do
-    count = if p["count"] != "", do: p["count"], else: "1"
-    run_rcon(socket, "give #{p["target"]} #{p["item"]} #{count}")
-  end
-
-  def handle_event("rcon_quick", %{"cmd" => "tp_coords"} = p, socket) do
-    run_rcon(socket, "tp #{p["target"]} #{p["x"]} #{p["y"]} #{p["z"]}")
-  end
-
-  def handle_event("rcon_quick", %{"cmd" => "tp_entity"} = p, socket) do
-    run_rcon(socket, "tp #{p["target"]} #{p["destination"]}")
-  end
-
-  def handle_event("rcon_quick", %{"cmd" => "time", "value" => val}, socket) do
-    run_rcon(socket, "time set #{val}")
-  end
-
-  def handle_event("rcon_quick", %{"cmd" => "weather", "value" => val}, socket) do
-    run_rcon(socket, "weather #{val}")
-  end
-
-  def handle_event("rcon_quick", %{"cmd" => "gamemode"} = p, socket) do
-    run_rcon(socket, "gamemode #{p["mode"]} #{p["target"]}")
-  end
-
-  def handle_event("rcon_quick", %{"cmd" => "effect"} = p, socket) do
-    dur = if p["duration"] != "", do: p["duration"], else: "30"
-    amp = if p["amplifier"] != "", do: p["amplifier"], else: "0"
-    run_rcon(socket, "effect give #{p["target"]} #{p["effect"]} #{dur} #{amp}")
-  end
-
-  def handle_event("rcon_quick", %{"cmd" => "heal"} = p, socket) do
-    target = p["target"]
-
-    run_rcon_multi(socket, [
-      "effect give #{target} instant_health 1 255",
-      "effect give #{target} saturation 1 255"
-    ])
-  end
-
-  def handle_event("rcon_quick", _, socket), do: {:noreply, socket}
-
-  # --- Display ---
-
-  def handle_event("place_text", params, socket) do
-    text = Map.get(params, "text", "")
-    x = safe_int(Map.get(params, "x", "0"))
-    y = safe_int(Map.get(params, "y", "80"))
-    z = safe_int(Map.get(params, "z", "0"))
-    block = Map.get(params, "block", "diamond_block")
-
-    if text != "" do
-      Task.start(fn -> McFun.Display.write(text, {x, y, z}, block: block) end)
-      {:noreply, put_flash(socket, :info, "Placing '#{text}' at #{x},#{y},#{z}")}
-    else
-      {:noreply, socket}
-    end
-  end
-
   # --- Handles ---
 
   @impl true
   def handle_info(:refresh_bots, socket) do
     {:noreply, assign(socket, bots: list_bots(), bot_statuses: build_bot_statuses())}
+  end
+
+  @impl true
+  def handle_info(:refresh_bot_statuses, socket) do
+    {:noreply, assign(socket, bot_statuses: build_bot_statuses())}
+  end
+
+  @impl true
+  def handle_info(:close_bot_config, socket) do
+    {:noreply, assign(socket, selected_bot: nil)}
+  end
+
+  @impl true
+  def handle_info({:flash, level, message}, socket) do
+    {:noreply, put_flash(socket, level, message)}
   end
 
   @impl true
@@ -539,10 +246,7 @@ defmodule McFunWeb.DashboardLive do
     end)
 
     models = safe_model_ids()
-    # Refresh bots list (detects new/removed bots) but do NOT rebuild bot_statuses —
-    # those are updated incrementally via PubSub :bot_event messages.
     current_bots = list_bots()
-    # Subscribe to any new bots we haven't seen yet
     known = socket.assigns.bots
 
     for bot <- current_bots, bot not in known do
@@ -594,7 +298,6 @@ defmodule McFunWeb.DashboardLive do
     McFun.EventStore.push(event)
     events = [event | Enum.take(socket.assigns.events, 199)]
 
-    # Incrementally update bot_statuses from PubSub events
     statuses = apply_bot_event(socket.assigns.bot_statuses, bot_name, event_type, event_data)
     {:noreply, assign(socket, events: events, bot_statuses: statuses)}
   end
@@ -657,7 +360,6 @@ defmodule McFunWeb.DashboardLive do
     if Process.whereis(McFun.Rcon), do: :connected, else: :disconnected
   end
 
-  # Strip Minecraft § formatting codes (e.g. §e, §f, §r, §6, §7, §l, §o, §n, §k, §m)
   defp strip_mc_formatting(text) when is_binary(text) do
     String.replace(text, ~r/§[0-9a-fk-or]/i, "")
   end
@@ -671,17 +373,6 @@ defmodule McFunWeb.DashboardLive do
   catch
     _, _ -> []
   end
-
-  defp safe_int(val) when is_integer(val), do: val
-
-  defp safe_int(val) when is_binary(val) do
-    case Integer.parse(val) do
-      {n, _} -> n
-      :error -> 0
-    end
-  end
-
-  defp safe_int(_), do: 0
 
   defp update_bot_status(statuses, bot_name, updates) when is_map(updates) do
     case Map.get(statuses, bot_name) do
@@ -782,7 +473,6 @@ defmodule McFunWeb.DashboardLive do
         :ok
 
       {:error, {:already_started, _}} ->
-        # Update model/personality on existing ChatBot
         try do
           McFun.ChatBot.set_model(name, model)
           if personality, do: McFun.ChatBot.set_personality(name, personality)
@@ -818,86 +508,4 @@ defmodule McFunWeb.DashboardLive do
       [] -> :ok
     end
   end
-
-  defp run_rcon(socket, cmd) do
-    lv = self()
-
-    Task.start(fn ->
-      result =
-        case McFun.Rcon.command(cmd) do
-          {:ok, r} -> r
-          {:error, r} -> "ERR: #{inspect(r)}"
-        end
-
-      send(lv, {:rcon_result, cmd, result})
-    end)
-
-    {:noreply, socket}
-  end
-
-  defp run_rcon_multi(socket, commands) do
-    lv = self()
-
-    Task.start(fn ->
-      Enum.each(commands, &exec_and_report_rcon(&1, lv))
-    end)
-
-    {:noreply, socket}
-  end
-
-  defp exec_and_report_rcon(cmd, lv) do
-    result =
-      case McFun.Rcon.command(cmd) do
-        {:ok, r} -> r
-        {:error, r} -> "ERR: #{inspect(r)}"
-      end
-
-    send(lv, {:rcon_result, cmd, result})
-  end
-
-  defp lookup_entity_position(assigns, name) do
-    case get_in(assigns, [:bot_statuses, name, :position]) do
-      {_, _, _} = pos ->
-        pos
-
-      _ ->
-        case get_in(assigns, [:player_statuses, name, :position]) do
-          {_, _, _} = pos -> pos
-          _ -> nil
-        end
-    end
-  end
-
-  defp entity_options(bots, player_statuses) do
-    selectors = ["@a", "@p", "@r"]
-    players = Map.keys(player_statuses)
-    selectors ++ bots ++ (players -- bots)
-  end
-
-  # --- Render Helpers (used by dashboard_live.html.heex) ---
-
-  defp event_color(:player_join), do: "text-[#00ff88]"
-  defp event_color(:player_leave), do: "text-[#ffaa00]"
-  defp event_color(:player_death), do: "text-[#ff4444]"
-  defp event_color(:player_chat), do: "text-[#00ffff]"
-  defp event_color(:player_advancement), do: "text-[#aa66ff]"
-  defp event_color(:bot_chat), do: "text-[#00ffff]"
-  defp event_color(:bot_whisper), do: "text-[#ff66aa]"
-  defp event_color(:bot_spawn), do: "text-[#00ff88]"
-  defp event_color(:bot_llm_response), do: "text-[#ffcc00]"
-  defp event_color(_), do: "text-[#666]"
-
-  defp format_event_data(data) when is_map(data) do
-    data
-    |> Map.drop([:raw_line, :timestamp])
-    |> Map.drop(["raw_line", "timestamp"])
-    |> Enum.map_join(" ", fn {k, v} -> "#{k}=#{format_value(v)}" end)
-  end
-
-  defp format_event_data(data), do: inspect(data)
-
-  defp format_value(v) when is_float(v), do: :erlang.float_to_binary(v, decimals: 1)
-  defp format_value(v) when is_map(v), do: inspect(v)
-  defp format_value(v) when is_list(v), do: inspect(v)
-  defp format_value(v), do: to_string(v)
 end

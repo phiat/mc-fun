@@ -158,498 +158,60 @@
     </div>
 
     <%!-- ==================== BOT CONFIG MODAL ==================== --%>
-    <McFunWeb.DashboardComponents.bot_config_modal
+    <.live_component
       :if={@selected_bot}
+      module={McFunWeb.BotConfigModalLive}
+      id="bot-config-modal"
       bot={@selected_bot}
       status={@bot_statuses[@selected_bot]}
       modal_tab={@modal_tab}
       available_models={@available_models}
       online_players={@online_players}
+      parent_pid={self()}
     />
 
     <%!-- ==================== RCON TAB ==================== --%>
-    <div
+    <.live_component
       :if={@active_tab == "rcon"}
-      id="panel-rcon"
-      role="tabpanel"
-      class="border-2 border-[#333]/50 bg-[#0d0d14]"
-    >
-      <div class="text-[10px] tracking-widest text-[#888] px-4 pt-3 pb-2">RCON TERMINAL</div>
-      <div class="bg-[#080810] mx-2 mb-2 h-96 overflow-y-auto p-3 text-xs flex flex-col-reverse border border-[#222]">
-        <div :for={{entry, idx} <- Enum.with_index(@rcon_history)} id={"rcon-#{idx}"} class="mb-2">
-          <div class="text-[#00ffff]">&gt; {entry.cmd}</div>
-          <div class="text-[#888] whitespace-pre-wrap">{entry.result}</div>
-        </div>
-        <div :if={@rcon_history == []} class="text-[#333]">awaiting input...</div>
-      </div>
-      <form
-        phx-submit="rcon_submit"
-        id="rcon-form"
-        phx-hook="RconConsole"
-        class="flex gap-2 px-4 pb-4"
-      >
-        <input
-          type="text"
-          name="command"
-          value={@rcon_input}
-          phx-change="rcon_input"
-          phx-debounce="blur"
-          placeholder="enter rcon command... (↑↓ history, Tab repeat)"
-          class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
-          autocomplete="off"
-        />
-        <button
-          type="submit"
-          phx-disable-with="..."
-          class="px-4 py-2 border border-[#00ffff] text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10"
-        >
-          EXEC
-        </button>
-      </form>
-
-      <%!-- Quick Commands Toggle --%>
-      <div class="px-4 pb-2">
-        <button
-          phx-click="toggle_rcon_quick"
-          class="text-[10px] tracking-widest text-[#666] hover:text-[#00ffff] transition-colors"
-        >
-          {if @rcon_quick_open, do: "[-]", else: "[+]"} QUICK COMMANDS
-        </button>
-      </div>
-
-      <%!-- Quick Commands Palette --%>
-      <div
-        :if={@rcon_quick_open}
-        id="rcon-quick-cmds"
-        phx-hook="QuickCommands"
-        class="px-4 pb-4 space-y-2"
-      >
-        <% entity_opts = entity_options(@bots, @player_statuses) %>
-
-        <%!-- SAY --%>
-        <form phx-submit="rcon_quick" class="flex items-end gap-2">
-          <input type="hidden" name="cmd" value="say" />
-          <div class="flex-1">
-            <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">MESSAGE</label>
-            <input
-              type="text"
-              name="message"
-              placeholder="broadcast..."
-              class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
-            />
-          </div>
-          <button
-            type="submit"
-            class="px-3 py-1 border border-[#00ffff]/40 text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10 shrink-0"
-          >
-            SAY
-          </button>
-        </form>
-
-        <%!-- GIVE --%>
-        <form phx-submit="rcon_quick" class="flex items-end gap-2">
-          <input type="hidden" name="cmd" value="give" />
-          <div>
-            <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">PLAYER</label>
-            <select
-              name="target"
-              class="bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-            >
-              <option :for={opt <- entity_opts} value={opt}>{opt}</option>
-            </select>
-          </div>
-          <div class="flex-1">
-            <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">ITEM</label>
-            <input
-              type="text"
-              name="item"
-              placeholder="diamond"
-              class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
-            />
-          </div>
-          <div class="w-16">
-            <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">QTY</label>
-            <input
-              type="text"
-              name="count"
-              value="1"
-              class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-            />
-          </div>
-          <button
-            type="submit"
-            class="px-3 py-1 border border-[#00ffff]/40 text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10 shrink-0"
-          >
-            GIVE
-          </button>
-        </form>
-
-        <%!-- TP (coords) --%>
-        <form phx-submit="rcon_quick" class="flex items-end gap-2">
-          <input type="hidden" name="cmd" value="tp_coords" />
-          <div>
-            <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">WHO</label>
-            <select
-              name="target"
-              class="bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-            >
-              <option :for={opt <- entity_opts} value={opt}>{opt}</option>
-            </select>
-          </div>
-          <div :for={{label, name} <- [{"X", "x"}, {"Y", "y"}, {"Z", "z"}]} class="w-16">
-            <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">{label}</label>
-            <input
-              type="text"
-              name={name}
-              value="0"
-              class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-            />
-          </div>
-          <button
-            type="submit"
-            class="px-3 py-1 border border-[#00ffff]/40 text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10 shrink-0"
-          >
-            TP XYZ
-          </button>
-        </form>
-
-        <%!-- TP (to entity) --%>
-        <form phx-submit="rcon_quick" class="flex items-end gap-2">
-          <input type="hidden" name="cmd" value="tp_entity" />
-          <div>
-            <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">WHO</label>
-            <select
-              name="target"
-              class="bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-            >
-              <option :for={opt <- entity_opts} value={opt}>{opt}</option>
-            </select>
-          </div>
-          <div>
-            <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">TO</label>
-            <select
-              name="destination"
-              class="bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-            >
-              <option :for={opt <- entity_opts} value={opt}>{opt}</option>
-            </select>
-          </div>
-          <button
-            type="submit"
-            class="px-3 py-1 border border-[#00ffff]/40 text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10 shrink-0"
-          >
-            TP TO
-          </button>
-        </form>
-
-        <%!-- TIME + WEATHER + GAMEMODE row --%>
-        <div class="flex gap-2">
-          <form phx-submit="rcon_quick" class="flex items-end gap-2">
-            <input type="hidden" name="cmd" value="time" />
-            <div>
-              <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">TIME</label>
-              <select
-                name="value"
-                class="bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-              >
-                <option :for={v <- ["day", "night", "noon", "midnight"]} value={v}>
-                  {String.upcase(v)}
-                </option>
-              </select>
-            </div>
-            <button
-              type="submit"
-              class="px-3 py-1 border border-[#00ffff]/40 text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10 shrink-0"
-            >
-              SET
-            </button>
-          </form>
-
-          <form phx-submit="rcon_quick" class="flex items-end gap-2">
-            <input type="hidden" name="cmd" value="weather" />
-            <div>
-              <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">WEATHER</label>
-              <select
-                name="value"
-                class="bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-              >
-                <option :for={v <- ["clear", "rain", "thunder"]} value={v}>
-                  {String.upcase(v)}
-                </option>
-              </select>
-            </div>
-            <button
-              type="submit"
-              class="px-3 py-1 border border-[#00ffff]/40 text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10 shrink-0"
-            >
-              SET
-            </button>
-          </form>
-
-          <form phx-submit="rcon_quick" class="flex items-end gap-2">
-            <input type="hidden" name="cmd" value="gamemode" />
-            <div>
-              <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">MODE</label>
-              <select
-                name="mode"
-                class="bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-              >
-                <option :for={v <- ["survival", "creative", "spectator", "adventure"]} value={v}>
-                  {String.upcase(v)}
-                </option>
-              </select>
-            </div>
-            <div>
-              <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">PLAYER</label>
-              <select
-                name="target"
-                class="bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-              >
-                <option :for={opt <- entity_opts} value={opt}>{opt}</option>
-              </select>
-            </div>
-            <button
-              type="submit"
-              class="px-3 py-1 border border-[#00ffff]/40 text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10 shrink-0"
-            >
-              SET
-            </button>
-          </form>
-        </div>
-
-        <%!-- EFFECT --%>
-        <form phx-submit="rcon_quick" class="flex items-end gap-2">
-          <input type="hidden" name="cmd" value="effect" />
-          <div>
-            <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">PLAYER</label>
-            <select
-              name="target"
-              class="bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-            >
-              <option :for={opt <- entity_opts} value={opt}>{opt}</option>
-            </select>
-          </div>
-          <div class="flex-1">
-            <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">EFFECT</label>
-            <input
-              type="text"
-              name="effect"
-              placeholder="speed"
-              class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
-            />
-          </div>
-          <div class="w-14">
-            <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">DUR</label>
-            <input
-              type="text"
-              name="duration"
-              value="30"
-              class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-            />
-          </div>
-          <div class="w-14">
-            <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">AMP</label>
-            <input
-              type="text"
-              name="amplifier"
-              value="0"
-              class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-            />
-          </div>
-          <button
-            type="submit"
-            class="px-3 py-1 border border-[#aa66ff]/40 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10 shrink-0"
-          >
-            EFFECT
-          </button>
-        </form>
-
-        <%!-- HEAL --%>
-        <form phx-submit="rcon_quick" class="flex items-end gap-2">
-          <input type="hidden" name="cmd" value="heal" />
-          <div>
-            <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">PLAYER</label>
-            <select
-              name="target"
-              class="bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
-            >
-              <option :for={opt <- entity_opts} value={opt}>{opt}</option>
-            </select>
-          </div>
-          <button
-            type="submit"
-            class="px-3 py-1 border border-[#00ff88]/40 text-[#00ff88] text-[10px] tracking-widest hover:bg-[#00ff88]/10 shrink-0"
-          >
-            HEAL
-          </button>
-        </form>
-      </div>
-    </div>
+      module={McFunWeb.RconConsoleLive}
+      id="rcon-console"
+      rcon_history={@rcon_history}
+      bots={@bots}
+      player_statuses={@player_statuses}
+      parent_pid={self()}
+    />
 
     <%!-- ==================== FX TAB ==================== --%>
-    <div
+    <.live_component
       :if={@active_tab == "effects"}
-      id="panel-effects"
-      role="tabpanel"
-      class="border-2 border-[#333]/50 bg-[#0d0d14] p-4"
-    >
-      <div class="text-[10px] tracking-widest text-[#888] mb-3">EFFECTS PANEL</div>
-      <div class="flex items-center gap-2 mb-4">
-        <span class="text-[10px] tracking-wider text-[#666]">TARGET</span>
-        <select
-          phx-change="pick_effect_target"
-          name="target"
-          class="bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1.5 text-xs focus:border-[#00ffff] focus:outline-none"
-        >
-          <option
-            :for={opt <- entity_options(@bots, @player_statuses)}
-            value={opt}
-            selected={opt == @effect_target}
-          >
-            {opt}
-          </option>
-        </select>
-        <input
-          type="text"
-          value={@effect_target}
-          phx-change="set_effect_target"
-          phx-debounce="300"
-          name="target"
-          placeholder="or type custom..."
-          class="bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-1.5 text-xs w-40 focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
-        />
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <button
-          :for={effect <- ["celebration", "welcome", "death", "achievement", "firework"]}
-          phx-click="fire_effect"
-          phx-value-effect={effect}
-          phx-disable-with="..."
-          class="px-4 py-2 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10 hover:border-[#aa66ff] transition-all"
-        >
-          {String.upcase(effect)}
-        </button>
-      </div>
-
-      <%!-- Custom message --%>
-      <form phx-submit="fire_title" class="mt-4 flex items-end gap-2">
-        <div class="flex-1">
-          <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">TITLE</label>
-          <input
-            type="text"
-            name="title"
-            placeholder="big text..."
-            class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1.5 text-xs focus:border-[#aa66ff] focus:outline-none placeholder:text-[#444]"
-          />
-        </div>
-        <div class="flex-1">
-          <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">SUBTITLE</label>
-          <input
-            type="text"
-            name="subtitle"
-            placeholder="smaller text..."
-            class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1.5 text-xs focus:border-[#aa66ff] focus:outline-none placeholder:text-[#444]"
-          />
-        </div>
-        <button
-          type="submit"
-          phx-disable-with="..."
-          class="px-4 py-1.5 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10 hover:border-[#aa66ff] transition-all shrink-0"
-        >
-          SEND
-        </button>
-      </form>
-    </div>
+      module={McFunWeb.EffectsPanelLive}
+      id="effects-panel"
+      effect_target={@effect_target}
+      bots={@bots}
+      player_statuses={@player_statuses}
+      parent_pid={self()}
+    />
 
     <%!-- ==================== DISPLAY TAB ==================== --%>
-    <div
+    <.live_component
       :if={@active_tab == "display"}
-      id="panel-display"
-      role="tabpanel"
-      class="border-2 border-[#333]/50 bg-[#0d0d14] p-4"
-    >
-      <div class="text-[10px] tracking-widest text-[#888] mb-3">BLOCK TEXT DISPLAY</div>
-      <form phx-submit="place_text" class="space-y-3">
-        <input
-          type="text"
-          name="text"
-          value={@display_text}
-          placeholder="text to render..."
-          class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
-        />
-        <%!-- Entity picker for location --%>
-        <div class="flex items-center gap-2">
-          <span class="text-[10px] tracking-wider text-[#666]">LOCATION FROM</span>
-          <select
-            phx-change="pick_display_entity"
-            name="entity"
-            class="bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1.5 text-xs focus:border-[#00ffff] focus:outline-none"
-          >
-            <option value="">Manual</option>
-            <%= for bot <- @bots do %>
-              <option value={bot}>{bot}</option>
-            <% end %>
-            <%= for {name, _data} <- @player_statuses, name not in @bots do %>
-              <option value={name}>{name}</option>
-            <% end %>
-          </select>
-        </div>
-        <div class="grid grid-cols-4 gap-2">
-          <div :for={
-            {label, name, val} <- [
-              {"X", "x", @display_x},
-              {"Y", "y", @display_y},
-              {"Z", "z", @display_z},
-              {"BLOCK", "block", @display_block}
-            ]
-          }>
-            <label class="text-[10px] tracking-wider text-[#666] block mb-1">{label}</label>
-            <input
-              type="text"
-              name={name}
-              value={val}
-              class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1.5 text-xs focus:border-[#00ffff] focus:outline-none"
-            />
-          </div>
-        </div>
-        <button
-          type="submit"
-          phx-disable-with="RENDERING..."
-          class="px-6 py-2 border-2 border-[#00ffff] text-[#00ffff] text-[10px] tracking-widest font-bold hover:bg-[#00ffff] hover:text-[#0a0a0f] transition-all"
-        >
-          RENDER
-        </button>
-      </form>
-    </div>
+      module={McFunWeb.DisplayPanelLive}
+      id="display-panel"
+      display_x={@display_x}
+      display_y={@display_y}
+      display_z={@display_z}
+      bots={@bots}
+      bot_statuses={@bot_statuses}
+      player_statuses={@player_statuses}
+      parent_pid={self()}
+    />
 
     <%!-- ==================== EVENTS TAB ==================== --%>
-    <div
+    <.live_component
       :if={@active_tab == "events"}
-      id="panel-events"
-      role="tabpanel"
-      class="border-2 border-[#333]/50 bg-[#0d0d14]"
-    >
-      <div class="flex items-center justify-between px-4 pt-3 pb-2">
-        <div class="text-[10px] tracking-widest text-[#888]">
-          EVENT STREAM <span class="text-[#00ffff]">[{length(@events)}]</span>
-        </div>
-        <div class="flex items-center gap-1">
-          <div class="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
-          <span class="text-[10px] text-[#00ff88]">LIVE</span>
-        </div>
-      </div>
-      <div class="bg-[#080810] mx-2 mb-2 h-96 overflow-y-auto p-3 text-[11px] border border-[#222]">
-        <div
-          :for={{event, idx} <- Enum.with_index(@events)}
-          id={"event-#{idx}"}
-          class="mb-0.5 flex gap-2"
-        >
-          <span class="text-[#444] shrink-0">{Calendar.strftime(event.at, "%H:%M:%S")}</span>
-          <span class={"shrink-0 " <> event_color(event.type)}>[{event.type}]</span>
-          <span class="text-[#888]">{format_event_data(event.data)}</span>
-        </div>
-        <div :if={@events == []} class="text-[#333]">waiting for events...</div>
-      </div>
-    </div>
+      module={McFunWeb.EventStreamLive}
+      id="event-stream"
+      events={@events}
+    />
   </div>
 </div>
