@@ -92,7 +92,9 @@ defmodule McFun.Redstone.Executor do
 
   defp rcon(cmd) do
     case McFun.Rcon.command(cmd) do
-      {:ok, _} -> :ok
+      {:ok, _} ->
+        :ok
+
       {:error, reason} = err ->
         Logger.warning("Redstone RCON error: #{inspect(reason)} — cmd: #{cmd}")
         err

@@ -107,9 +107,15 @@ defmodule McFunWeb.WebhookController do
 
   defp parse_firework_opts(params) do
     opts = []
-    opts = if colors = Map.get(params, "colors"), do: [{:colors, List.wrap(colors)} | opts], else: opts
+
+    opts =
+      if colors = Map.get(params, "colors"), do: [{:colors, List.wrap(colors)} | opts], else: opts
+
     opts = if shape = Map.get(params, "shape"), do: [{:shape, shape} | opts], else: opts
-    opts = if flight = parse_int(Map.get(params, "flight")), do: [{:flight, flight} | opts], else: opts
+
+    opts =
+      if flight = parse_int(Map.get(params, "flight")), do: [{:flight, flight} | opts], else: opts
+
     opts
   end
 

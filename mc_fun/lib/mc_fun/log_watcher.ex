@@ -26,8 +26,8 @@ defmodule McFun.LogWatcher do
     {~r/\[Server thread\/INFO\]: (\w+) (was slain by|was shot by|drowned|fell from|hit the ground|died|burned|blew up|was killed|suffocated|starved|withered)(.*)$/,
      :player_death, [:username, :cause, :details]},
     {~r/\[Server thread\/INFO\]: <(\w+)> (.+)/, :player_chat, [:username, :message]},
-    {~r/\[Server thread\/INFO\]: (\w+) has made the advancement \[(.+?)\]/,
-     :player_advancement, [:username, :advancement]},
+    {~r/\[Server thread\/INFO\]: (\w+) has made the advancement \[(.+?)\]/, :player_advancement,
+     [:username, :advancement]},
     {~r/\[Server thread\/INFO\]: Done \([\d.]+s\)!/, :server_started, []}
   ]
 

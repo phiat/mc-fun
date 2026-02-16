@@ -1,16 +1,6 @@
 [
   {
     "active": true,
-    "context_window": 262144,
-    "created": 1757046093,
-    "id": "moonshotai/kimi-k2-instruct-0905",
-    "max_completion_tokens": 16384,
-    "object": "model",
-    "owned_by": "Moonshot AI",
-    "public_apps": null
-  },
-  {
-    "active": true,
     "context_window": 4000,
     "created": 1765926439,
     "id": "canopylabs/orpheus-arabic-saudi",
@@ -21,22 +11,22 @@
   },
   {
     "active": true,
-    "context_window": 131072,
-    "created": 1748396646,
-    "id": "qwen/qwen3-32b",
-    "max_completion_tokens": 40960,
+    "context_window": 262144,
+    "created": 1757046093,
+    "id": "moonshotai/kimi-k2-instruct-0905",
+    "max_completion_tokens": 16384,
     "object": "model",
-    "owned_by": "Alibaba Cloud",
+    "owned_by": "Moonshot AI",
     "public_apps": null
   },
   {
     "active": true,
     "context_window": 131072,
-    "created": 1754408224,
-    "id": "openai/gpt-oss-120b",
-    "max_completion_tokens": 65536,
+    "created": 1693721698,
+    "id": "llama-3.1-8b-instant",
+    "max_completion_tokens": 131072,
     "object": "model",
-    "owned_by": "OpenAI",
+    "owned_by": "Meta",
     "public_apps": null
   },
   {
@@ -62,21 +52,11 @@
   {
     "active": true,
     "context_window": 131072,
-    "created": 1752435491,
-    "id": "moonshotai/kimi-k2-instruct",
-    "max_completion_tokens": 16384,
+    "created": 1743874824,
+    "id": "meta-llama/llama-4-scout-17b-16e-instruct",
+    "max_completion_tokens": 8192,
     "object": "model",
-    "owned_by": "Moonshot AI",
-    "public_apps": null
-  },
-  {
-    "active": true,
-    "context_window": 131072,
-    "created": 1754407957,
-    "id": "openai/gpt-oss-20b",
-    "max_completion_tokens": 65536,
-    "object": "model",
-    "owned_by": "OpenAI",
+    "owned_by": "Meta",
     "public_apps": null
   },
   {
@@ -85,56 +65,6 @@
     "created": 1748632101,
     "id": "meta-llama/llama-prompt-guard-2-22m",
     "max_completion_tokens": 512,
-    "object": "model",
-    "owned_by": "Meta",
-    "public_apps": null
-  },
-  {
-    "active": true,
-    "context_window": 4096,
-    "created": 1737672203,
-    "id": "allam-2-7b",
-    "max_completion_tokens": 4096,
-    "object": "model",
-    "owned_by": "SDAIA",
-    "public_apps": null
-  },
-  {
-    "active": true,
-    "context_window": 512,
-    "created": 1748632165,
-    "id": "meta-llama/llama-prompt-guard-2-86m",
-    "max_completion_tokens": 512,
-    "object": "model",
-    "owned_by": "Meta",
-    "public_apps": null
-  },
-  {
-    "active": true,
-    "context_window": 4000,
-    "created": 1766186316,
-    "id": "canopylabs/orpheus-v1-english",
-    "max_completion_tokens": 50000,
-    "object": "model",
-    "owned_by": "Canopy Labs",
-    "public_apps": null
-  },
-  {
-    "active": true,
-    "context_window": 131072,
-    "created": 1743877158,
-    "id": "meta-llama/llama-4-maverick-17b-128e-instruct",
-    "max_completion_tokens": 8192,
-    "object": "model",
-    "owned_by": "Meta",
-    "public_apps": null
-  },
-  {
-    "active": true,
-    "context_window": 131072,
-    "created": 1693721698,
-    "id": "llama-3.1-8b-instant",
-    "max_completion_tokens": 131072,
     "object": "model",
     "owned_by": "Meta",
     "public_apps": null
@@ -151,10 +81,40 @@
   },
   {
     "active": true,
-    "context_window": 448,
-    "created": 1693721698,
-    "id": "whisper-large-v3",
-    "max_completion_tokens": 448,
+    "context_window": 131072,
+    "created": 1743877158,
+    "id": "meta-llama/llama-4-maverick-17b-128e-instruct",
+    "max_completion_tokens": 8192,
+    "object": "model",
+    "owned_by": "Meta",
+    "public_apps": null
+  },
+  {
+    "active": true,
+    "context_window": 131072,
+    "created": 1748396646,
+    "id": "qwen/qwen3-32b",
+    "max_completion_tokens": 40960,
+    "object": "model",
+    "owned_by": "Alibaba Cloud",
+    "public_apps": null
+  },
+  {
+    "active": true,
+    "context_window": 4000,
+    "created": 1766186316,
+    "id": "canopylabs/orpheus-v1-english",
+    "max_completion_tokens": 50000,
+    "object": "model",
+    "owned_by": "Canopy Labs",
+    "public_apps": null
+  },
+  {
+    "active": true,
+    "context_window": 131072,
+    "created": 1761708789,
+    "id": "openai/gpt-oss-safeguard-20b",
+    "max_completion_tokens": 65536,
     "object": "model",
     "owned_by": "OpenAI",
     "public_apps": null
@@ -172,8 +132,28 @@
   {
     "active": true,
     "context_window": 131072,
-    "created": 1761708789,
-    "id": "openai/gpt-oss-safeguard-20b",
+    "created": 1752435491,
+    "id": "moonshotai/kimi-k2-instruct",
+    "max_completion_tokens": 16384,
+    "object": "model",
+    "owned_by": "Moonshot AI",
+    "public_apps": null
+  },
+  {
+    "active": true,
+    "context_window": 512,
+    "created": 1748632165,
+    "id": "meta-llama/llama-prompt-guard-2-86m",
+    "max_completion_tokens": 512,
+    "object": "model",
+    "owned_by": "Meta",
+    "public_apps": null
+  },
+  {
+    "active": true,
+    "context_window": 131072,
+    "created": 1754407957,
+    "id": "openai/gpt-oss-20b",
     "max_completion_tokens": 65536,
     "object": "model",
     "owned_by": "OpenAI",
@@ -181,12 +161,32 @@
   },
   {
     "active": true,
-    "context_window": 131072,
-    "created": 1743874824,
-    "id": "meta-llama/llama-4-scout-17b-16e-instruct",
-    "max_completion_tokens": 8192,
+    "context_window": 448,
+    "created": 1693721698,
+    "id": "whisper-large-v3",
+    "max_completion_tokens": 448,
     "object": "model",
-    "owned_by": "Meta",
+    "owned_by": "OpenAI",
+    "public_apps": null
+  },
+  {
+    "active": true,
+    "context_window": 131072,
+    "created": 1754408224,
+    "id": "openai/gpt-oss-120b",
+    "max_completion_tokens": 65536,
+    "object": "model",
+    "owned_by": "OpenAI",
+    "public_apps": null
+  },
+  {
+    "active": true,
+    "context_window": 4096,
+    "created": 1737672203,
+    "id": "allam-2-7b",
+    "max_completion_tokens": 4096,
+    "object": "model",
+    "owned_by": "SDAIA",
     "public_apps": null
   },
   {

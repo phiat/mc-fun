@@ -19,23 +19,43 @@ defmodule McFun.Music do
 
   # Minecraft pitch values: F#3=0.5, G3=0.53, ... C5=2.0
   # Each semitone is 2^(1/12) apart. Base: F#3 = 0.5
-  @base_note_num 42  # F#3 in MIDI
+  # F#3 in MIDI
+  @base_note_num 42
   @base_pitch 0.5
 
   # Note name to MIDI number (octave 4: C4=60)
   @note_names %{
-    "C" => 0, "C#" => 1, "Db" => 1, "D" => 2, "D#" => 3, "Eb" => 3,
-    "E" => 4, "F" => 5, "F#" => 6, "Gb" => 6, "G" => 7, "G#" => 8,
-    "Ab" => 8, "A" => 9, "A#" => 10, "Bb" => 10, "B" => 11
+    "C" => 0,
+    "C#" => 1,
+    "Db" => 1,
+    "D" => 2,
+    "D#" => 3,
+    "Eb" => 3,
+    "E" => 4,
+    "F" => 5,
+    "F#" => 6,
+    "Gb" => 6,
+    "G" => 7,
+    "G#" => 8,
+    "Ab" => 8,
+    "A" => 9,
+    "A#" => 10,
+    "Bb" => 10,
+    "B" => 11
   }
 
   # Duration in beats (at 120 BPM, quarter = 500ms)
   @durations %{
-    "w" => 4.0,    # whole
-    "h" => 2.0,    # half
-    "q" => 1.0,    # quarter
-    "e" => 0.5,    # eighth
-    "s" => 0.25    # sixteenth
+    # whole
+    "w" => 4.0,
+    # half
+    "h" => 2.0,
+    # quarter
+    "q" => 1.0,
+    # eighth
+    "e" => 0.5,
+    # sixteenth
+    "s" => 0.25
   }
 
   # Instrument mapping

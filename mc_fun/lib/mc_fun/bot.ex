@@ -187,10 +187,7 @@ defmodule McFun.Bot do
 
   defp update_state_from_event(state, %{"event" => "spawn", "position" => pos} = event) do
     dimension = Map.get(event, "dimension")
-    %{state |
-      position: {pos["x"], pos["y"], pos["z"]},
-      dimension: format_dimension(dimension)
-    }
+    %{state | position: {pos["x"], pos["y"], pos["z"]}, dimension: format_dimension(dimension)}
   end
 
   defp update_state_from_event(state, %{"event" => "health", "health" => health, "food" => food}) do
@@ -206,11 +203,13 @@ defmodule McFun.Bot do
   defp update_state_from_event(state, _event), do: state
 
   defp format_dimension(nil), do: nil
+
   defp format_dimension(dim) when is_binary(dim) do
     dim
     |> String.replace("minecraft:", "")
     |> String.replace("the_", "")
   end
+
   defp format_dimension(_), do: nil
 
   defp broadcast(bot_name, event) do

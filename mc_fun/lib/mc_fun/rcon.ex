@@ -94,6 +94,7 @@ defmodule McFun.Rcon do
   @impl true
   def handle_info({:tcp_closed, _socket}, state) do
     Logger.warning("RCON connection closed, reconnecting...")
+
     case reconnect(state) do
       {:ok, state} -> {:noreply, state}
       {:error, _reason} -> {:stop, :connection_lost, state}

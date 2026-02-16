@@ -389,17 +389,33 @@ defmodule McFun.Presets do
 
   @all_presets [
     # Minecraft-native
-    @villager, @enderman, @witch_mc, @piglord, @creeper_pal,
+    @villager,
+    @enderman,
+    @witch_mc,
+    @piglord,
+    @creeper_pal,
     # Historical
-    @socrates, @einstein, @cleopatra,
+    @socrates,
+    @einstein,
+    @cleopatra,
     # Fictional
-    @sherlock, @gandalf, @pirate, @robot,
+    @sherlock,
+    @gandalf,
+    @pirate,
+    @robot,
     # Professional
-    @teacher, @coach, @critic,
+    @teacher,
+    @coach,
+    @critic,
     # Personality
-    @optimist, @skeptic, @dreamer,
+    @optimist,
+    @skeptic,
+    @dreamer,
     # Fun
-    @surfer, @cat_lord, @bard, @conspiracy
+    @surfer,
+    @cat_lord,
+    @bard,
+    @conspiracy
   ]
 
   @presets_by_id Map.new(@all_presets, fn p -> {p.id, p} end)

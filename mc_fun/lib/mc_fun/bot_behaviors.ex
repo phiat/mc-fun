@@ -35,12 +35,20 @@ defmodule McFun.BotBehaviors do
 
   @doc "Start a patrol route: bot walks between waypoints in a loop."
   def start_patrol(bot_name, waypoints) when is_list(waypoints) and length(waypoints) >= 2 do
-    start_behavior(bot_name, bot_name: bot_name, behavior: :patrol, params: %{waypoints: waypoints})
+    start_behavior(bot_name,
+      bot_name: bot_name,
+      behavior: :patrol,
+      params: %{waypoints: waypoints}
+    )
   end
 
   @doc "Start following a player: bot moves toward the target player."
   def start_follow(bot_name, target_player) when is_binary(target_player) do
-    start_behavior(bot_name, bot_name: bot_name, behavior: :follow, params: %{target: target_player})
+    start_behavior(bot_name,
+      bot_name: bot_name,
+      behavior: :follow,
+      params: %{target: target_player}
+    )
   end
 
   @doc "Start guarding a position: bot stays near a point and alerts on nearby players."

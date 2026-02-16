@@ -44,7 +44,11 @@ defmodule McFunWeb.DashboardComponents do
               name="model"
               value={@selected_model}
             >
-              <option :for={model <- @available_models} value={model} selected={model == @selected_model}>
+              <option
+                :for={model <- @available_models}
+                value={model}
+                selected={model == @selected_model}
+              >
                 {model}
               </option>
               <option :if={@available_models == []} value={@selected_model}>
@@ -112,7 +116,10 @@ defmodule McFunWeb.DashboardComponents do
 
   def bot_card(assigns) do
     ~H"""
-    <div id={"bot-card-#{@bot}"} class="border border-[#333] bg-[#111] p-3 hover:border-[#00ffff]/40 transition-all group">
+    <div
+      id={"bot-card-#{@bot}"}
+      class="border border-[#333] bg-[#111] p-3 hover:border-[#00ffff]/40 transition-all group"
+    >
       <%!-- Unit header --%>
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center gap-2">
@@ -162,7 +169,10 @@ defmodule McFunWeb.DashboardComponents do
                 <span>HP</span>
                 <div class="flex items-center gap-1">
                   <div class="w-20 h-1.5 bg-[#222] overflow-hidden">
-                    <div class="h-full bg-[#ff4444] shadow-[0_0_4px_#ff4444]" style={"width: #{min(100, (@status.health || 0) / 20 * 100)}%"} />
+                    <div
+                      class="h-full bg-[#ff4444] shadow-[0_0_4px_#ff4444]"
+                      style={"width: #{min(100, (@status.health || 0) / 20 * 100)}%"}
+                    />
                   </div>
                   <span class="text-[#ff4444]">{trunc(@status.health)}/20</span>
                 </div>
@@ -171,7 +181,10 @@ defmodule McFunWeb.DashboardComponents do
                 <span>FOOD</span>
                 <div class="flex items-center gap-1">
                   <div class="w-20 h-1.5 bg-[#222] overflow-hidden">
-                    <div class="h-full bg-[#ffaa00] shadow-[0_0_4px_#ffaa00]" style={"width: #{min(100, (@status.food || 0) / 20 * 100)}%"} />
+                    <div
+                      class="h-full bg-[#ffaa00] shadow-[0_0_4px_#ffaa00]"
+                      style={"width: #{min(100, (@status.food || 0) / 20 * 100)}%"}
+                    />
                   </div>
                   <span class="text-[#ffaa00]">{@status.food}/20</span>
                 </div>
@@ -180,7 +193,11 @@ defmodule McFunWeb.DashboardComponents do
             <%= if @status.position do %>
               <div class="flex justify-between">
                 <span>POS</span>
-                <span class="text-[#888]"><%= with {x, y, z} <- @status.position do %>X:<span class="text-[#e0e0e0]">{trunc(x)}</span> Y:<span class="text-[#e0e0e0]">{trunc(y)}</span> Z:<span class="text-[#e0e0e0]">{trunc(z)}</span><% end %></span>
+                <span class="text-[#888]">
+                  <%= with {x, y, z} <- @status.position do %>
+                    X:<span class="text-[#e0e0e0]">{trunc(x)}</span> Y:<span class="text-[#e0e0e0]">{trunc(y)}</span> Z:<span class="text-[#e0e0e0]">{trunc(z)}</span>
+                  <% end %>
+                </span>
               </div>
             <% end %>
             <%= if @status.dimension do %>
@@ -265,7 +282,9 @@ defmodule McFunWeb.DashboardComponents do
             <span class="text-sm font-bold text-[#e0e0e0] tracking-wider">{@bot}</span>
             <span class="text-[10px] text-[#666] tracking-wider">CONFIG</span>
           </div>
-          <button phx-click="close_bot_config" class="text-[#666] hover:text-[#e0e0e0] text-sm">[X]</button>
+          <button phx-click="close_bot_config" class="text-[#666] hover:text-[#e0e0e0] text-sm">
+            [X]
+          </button>
         </div>
 
         <%!-- Modal tabs --%>
@@ -314,7 +333,10 @@ defmodule McFunWeb.DashboardComponents do
                   rows="5"
                   class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none resize-y"
                 ><%= if(@status && @status.personality, do: @status.personality, else: "") %></textarea>
-                <button type="submit" class="mt-1 px-4 py-1 border border-[#00ff88]/50 text-[#00ff88] text-[10px] tracking-widest hover:bg-[#00ff88]/10">
+                <button
+                  type="submit"
+                  class="mt-1 px-4 py-1 border border-[#00ff88]/50 text-[#00ff88] text-[10px] tracking-widest hover:bg-[#00ff88]/10"
+                >
                   SAVE PERSONALITY
                 </button>
               </form>
@@ -326,7 +348,9 @@ defmodule McFunWeb.DashboardComponents do
               <div class="flex flex-wrap gap-1">
                 <%= for {category, presets} <- McFun.Presets.by_category() do %>
                   <div class="w-full mt-2 first:mt-0">
-                    <div class="text-[9px] tracking-widest text-[#555] mb-1">{category |> to_string() |> String.upcase()}</div>
+                    <div class="text-[9px] tracking-widest text-[#555] mb-1">
+                      {category |> to_string() |> String.upcase()}
+                    </div>
                     <div class="flex flex-wrap gap-1">
                       <button
                         :for={preset <- presets}
@@ -358,7 +382,11 @@ defmodule McFunWeb.DashboardComponents do
               </div>
               <%= if @status && @status.conversation_players && @status.conversation_players != [] do %>
                 <div class="bg-[#080810] border border-[#222] p-2 text-[10px] text-[#888] space-y-1 max-h-32 overflow-y-auto">
-                  <div :for={player <- @status.conversation_players} id={"convo-#{@bot}-#{player}"} class="flex items-center gap-2">
+                  <div
+                    :for={player <- @status.conversation_players}
+                    id={"convo-#{@bot}-#{player}"}
+                    class="flex items-center gap-2"
+                  >
                     <span class="text-[#00ffff]">{player}</span>
                     <span class="text-[#444]">
                       {length(Map.get(@status.conversations || %{}, player, []))} msgs
@@ -377,7 +405,9 @@ defmodule McFunWeb.DashboardComponents do
             <div class="flex items-center justify-between">
               <div>
                 <span class="text-[10px] tracking-wider text-[#888]">CURRENT: </span>
-                <span class="text-[10px] text-[#aa66ff]">{format_behavior(@status && @status.behavior)}</span>
+                <span class="text-[10px] text-[#aa66ff]">
+                  {format_behavior(@status && @status.behavior)}
+                </span>
               </div>
               <button
                 :if={@status && @status.behavior}
@@ -401,7 +431,10 @@ defmodule McFunWeb.DashboardComponents do
                   placeholder="[[0,64,0],[10,64,10],[20,64,0]]"
                   class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-1.5 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
                 />
-                <button type="submit" class="mt-1 px-4 py-1 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10">
+                <button
+                  type="submit"
+                  class="mt-1 px-4 py-1 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10"
+                >
                   START PATROL
                 </button>
               </form>
@@ -420,7 +453,10 @@ defmodule McFunWeb.DashboardComponents do
                   >
                     <option :for={player <- @online_players} value={player}>{player}</option>
                   </select>
-                  <button type="submit" class="px-4 py-1 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10">
+                  <button
+                    type="submit"
+                    class="px-4 py-1 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10"
+                  >
                     FOLLOW
                   </button>
                 </div>
@@ -433,15 +469,27 @@ defmodule McFunWeb.DashboardComponents do
               <form id={"guard-form-#{@bot}"} phx-submit="start_behavior_guard" class="space-y-2">
                 <input type="hidden" name="bot" value={@bot} />
                 <div class="grid grid-cols-4 gap-2">
-                  <div :for={{label, name, default} <- [{"X", "x", "0"}, {"Y", "y", "64"}, {"Z", "z", "0"}, {"R", "radius", "8"}]}>
+                  <div :for={
+                    {label, name, default} <- [
+                      {"X", "x", "0"},
+                      {"Y", "y", "64"},
+                      {"Z", "z", "0"},
+                      {"R", "radius", "8"}
+                    ]
+                  }>
                     <label class="text-[10px] tracking-wider text-[#666] block mb-0.5">{label}</label>
                     <input
-                      type="text" name={name} value={default}
+                      type="text"
+                      name={name}
+                      value={default}
                       class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
                     />
                   </div>
                 </div>
-                <button type="submit" class="px-4 py-1 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10">
+                <button
+                  type="submit"
+                  class="px-4 py-1 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10"
+                >
                   GUARD POSITION
                 </button>
               </form>
@@ -457,10 +505,15 @@ defmodule McFunWeb.DashboardComponents do
                 <input type="hidden" name="bot" value={@bot} />
                 <input
                   id={"chat-msg-#{@bot}"}
-                  type="text" name="message" placeholder="say something..."
+                  type="text"
+                  name="message"
+                  placeholder="say something..."
                   class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-1.5 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
                 />
-                <button type="submit" class="px-4 py-1 border border-[#00ffff]/50 text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10">
+                <button
+                  type="submit"
+                  class="px-4 py-1 border border-[#00ffff]/50 text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10"
+                >
                   SEND
                 </button>
               </form>
@@ -475,12 +528,17 @@ defmodule McFunWeb.DashboardComponents do
                   <div :for={{label, name} <- [{"X", "x"}, {"Y", "y"}, {"Z", "z"}]}>
                     <label class="text-[10px] tracking-wider text-[#666] block mb-0.5">{label}</label>
                     <input
-                      type="text" name={name} value="0"
+                      type="text"
+                      name={name}
+                      value="0"
                       class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#00ffff] focus:outline-none"
                     />
                   </div>
                 </div>
-                <button type="submit" class="px-4 py-1 border border-[#00ffff]/50 text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10">
+                <button
+                  type="submit"
+                  class="px-4 py-1 border border-[#00ffff]/50 text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10"
+                >
                   GO TO
                 </button>
               </form>
@@ -500,7 +558,9 @@ defmodule McFunWeb.DashboardComponents do
                 >
                   TP {player}
                 </button>
-                <div :if={@online_players == []} class="text-[10px] text-[#444]">No players online</div>
+                <div :if={@online_players == []} class="text-[10px] text-[#444]">
+                  No players online
+                </div>
               </div>
             </div>
 

@@ -26,9 +26,7 @@ defmodule McFun.Events.CallbackHandler do
       state.callback.(event_type, data)
     rescue
       e ->
-        Logger.warning(
-          "Event callback error for #{event_type}: #{Exception.message(e)}"
-        )
+        Logger.warning("Event callback error for #{event_type}: #{Exception.message(e)}")
     end
 
     {:noreply, state}

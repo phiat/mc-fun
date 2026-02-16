@@ -58,11 +58,13 @@ defmodule McFun.ActionParser do
 
   defp patterns do
     [
-      {:dig_looking_at, ~r/i'll dig|let me dig|digging|i'll mine|let me mine|mining that|i'll break|breaking that/},
+      {:dig_looking_at,
+       ~r/i'll dig|let me dig|digging|i'll mine|let me mine|mining that|i'll break|breaking that/},
       {:place, ~r/i'll place|placing|let me place|i'll build|building|let me build/},
       {:jump, ~r/i'll jump|jumping|let me jump/},
       {:follow, ~r/following you|i'll follow|let me follow|right behind you/},
-      {:goto, ~r/coming to you|on my way|i'll come|heading (to|your|over)|teleporting|going to you|let me come/},
+      {:goto,
+       ~r/coming to you|on my way|i'll come|heading (to|your|over)|teleporting|going to you|let me come/},
       {:craft, ~r/i'll craft|crafting|let me craft/},
       {:equip, ~r/i'll equip|equipping|putting on|let me equip/},
       {:drop, ~r/i'll drop|dropping|here you go|take this/},
@@ -138,7 +140,10 @@ defmodule McFun.ActionParser do
   defp execute_one(bot, :place, _params) do
     # Place requires coordinates we don't have from text alone.
     # Log and skip for now — this will be extended later.
-    Logger.info("ActionParser: place action detected for #{bot} but no coordinates available — skipping")
+    Logger.info(
+      "ActionParser: place action detected for #{bot} but no coordinates available — skipping"
+    )
+
     :skip
   end
 

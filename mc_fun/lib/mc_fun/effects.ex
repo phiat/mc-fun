@@ -25,7 +25,7 @@ defmodule McFun.Effects do
   """
   @spec firework(String.t(), keyword()) :: :ok | {:error, term()}
   def firework(target, opts \\ []) do
-    colors = Keyword.get(opts, :colors, [16711680])
+    colors = Keyword.get(opts, :colors, [16_711_680])
     shape = Keyword.get(opts, :shape, "burst")
     flight = Keyword.get(opts, :flight, 1)
 
@@ -118,7 +118,7 @@ defmodule McFun.Effects do
   @doc "Celebration: firework + totem particles + level-up sound."
   @spec celebration(String.t()) :: :ok
   def celebration(target) do
-    firework(target, colors: [16776960, 16777215], shape: "burst")
+    firework(target, colors: [16_776_960, 16_777_215], shape: "burst")
     Process.sleep(200)
     particle("minecraft:totem_of_undying", target, count: 50)
     Process.sleep(50)
@@ -138,7 +138,7 @@ defmodule McFun.Effects do
   @doc "Achievement fanfare: firework + challenge-complete sound."
   @spec achievement_fanfare(String.t()) :: :ok
   def achievement_fanfare(target) do
-    firework(target, colors: [65280, 16776960], shape: "star")
+    firework(target, colors: [65280, 16_776_960], shape: "star")
     Process.sleep(200)
     sound("ui.toast.challenge_complete", target)
     :ok
@@ -149,7 +149,7 @@ defmodule McFun.Effects do
   def welcome(target) do
     title(target, "Welcome!", subtitle: "Enjoy your stay")
     Process.sleep(100)
-    firework(target, colors: [65535, 16777215], shape: "small_ball")
+    firework(target, colors: [65535, 16_777_215], shape: "small_ball")
     Process.sleep(50)
     sound("block.note_block.harp", target, pitch: 1.5)
     :ok
@@ -159,7 +159,9 @@ defmodule McFun.Effects do
 
   defp rcon(cmd) do
     case McFun.Rcon.command(cmd) do
-      {:ok, _} -> :ok
+      {:ok, _} ->
+        :ok
+
       {:error, reason} = err ->
         Logger.warning("Effects RCON error: #{inspect(reason)}")
         err
