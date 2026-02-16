@@ -27,7 +27,7 @@ defmodule McFunWeb.DashboardLive do
         rcon_history: [],
         bots: list_bots(),
         bot_statuses: build_bot_statuses(),
-        bot_spawn_name: "",
+        bot_spawn_name: "McFunBot",
         selected_model: Application.get_env(:mc_fun, :groq)[:model] || "openai/gpt-oss-20b",
         selected_preset: nil,
         deploy_personality: default_personality(),
@@ -60,18 +60,36 @@ defmodule McFunWeb.DashboardLive do
     {:noreply, assign(socket, sidebar_open: !socket.assigns.sidebar_open)}
   end
 
-  # --- Quick Launch ---
+  # --- Model Selection ---
 
-  def handle_event("quick_launch", _params, socket) do
+  def handle_event("select_model", %{"model" => model}, socket) do
+    {:noreply, assign(socket, selected_model: model)}
+  end
+
+  def handle_event("change_bot_model", %{"bot" => bot_name, "model" => model}, socket) do
+    try do
+      McFun.ChatBot.set_model(bot_name, model)
+      {:noreply,
+       socket
+       |> put_flash(:info, "#{bot_name} >> #{model}")
+       |> assign(bot_statuses: build_bot_statuses())}
+    catch
+      _, _ -> {:noreply, put_flash(socket, :error, "ChatBot not active for #{bot_name}")}
+    end
+  end
+
+  # --- Bot Deploy ---
+
+  def handle_event("deploy_bot", %{"name" => name}, socket) when name != "" do
     model = socket.assigns.selected_model
     personality = socket.assigns.deploy_personality
-    name = "McFunBot"
 
     if name in socket.assigns.bots do
+      # Bot already running — update ChatBot model/personality
       ensure_chatbot(name, model, personality)
       {:noreply,
        socket
-       |> put_flash(:info, "McFunBot already running, model: #{model}")
+       |> put_flash(:info, "#{name} already running — model: #{model}")
        |> assign(bot_statuses: build_bot_statuses())}
     else
       case McFun.BotSupervisor.spawn_bot(name) do
@@ -88,8 +106,8 @@ defmodule McFunWeb.DashboardLive do
 
           {:noreply,
            socket
-           |> put_flash(:info, "Deploying McFunBot [#{model}]...")
-           |> assign(bots: list_bots(), bot_statuses: build_bot_statuses())}
+           |> put_flash(:info, "Deploying #{name} [#{model}]...")
+           |> assign(bots: list_bots(), bot_statuses: build_bot_statuses(), bot_spawn_name: "")}
 
         {:error, reason} ->
           {:noreply, put_flash(socket, :error, "Deploy failed: #{inspect(reason)}")}
@@ -97,43 +115,7 @@ defmodule McFunWeb.DashboardLive do
     end
   end
 
-  def handle_event("select_model", %{"model" => model}, socket) do
-    {:noreply,
-     socket
-     |> assign(selected_model: model)
-     |> put_flash(:info, "Deploy model: #{model}")}
-  end
-
-  def handle_event("change_bot_model", %{"bot" => bot_name, "model" => model}, socket) do
-    try do
-      McFun.ChatBot.set_model(bot_name, model)
-      {:noreply,
-       socket
-       |> put_flash(:info, "#{bot_name} >> #{model}")
-       |> assign(bot_statuses: build_bot_statuses())}
-    catch
-      _, _ -> {:noreply, put_flash(socket, :error, "ChatBot not active for #{bot_name}")}
-    end
-  end
-
-  # --- Custom Bot Spawn ---
-
-  def handle_event("spawn_custom_bot", %{"name" => name}, socket) when name != "" do
-    case McFun.BotSupervisor.spawn_bot(name) do
-      {:ok, pid} ->
-        Process.monitor(pid)
-        Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{name}")
-        {:noreply,
-         socket
-         |> put_flash(:info, "Deploying #{name}...")
-         |> assign(bots: list_bots(), bot_statuses: build_bot_statuses(), bot_spawn_name: "")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed: #{inspect(reason)}")}
-    end
-  end
-
-  def handle_event("spawn_custom_bot", _, socket), do: {:noreply, socket}
+  def handle_event("deploy_bot", _, socket), do: {:noreply, socket}
 
   def handle_event("bot_name_input", %{"name" => val}, socket) do
     {:noreply, assign(socket, bot_spawn_name: val)}

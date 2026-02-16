@@ -41,16 +41,8 @@
         </button>
       </div>
 
-      <%!-- Quick actions --%>
-      <div class="flex items-center gap-2">
+      <div :if={@bots != []} class="flex items-center gap-2">
         <button
-          phx-click="quick_launch"
-          class="px-3 py-1 text-[10px] tracking-widest border border-[#00ff88] text-[#00ff88] hover:bg-[#00ff88]/10 transition-all"
-        >
-          [+] DEPLOY
-        </button>
-        <button
-          :if={@bots != []}
           phx-click="stop_all_bots"
           data-confirm="Terminate all units?"
           class="px-3 py-1 text-[10px] tracking-widest border border-[#ff4444] text-[#ff4444] hover:bg-[#ff4444]/10 transition-all"

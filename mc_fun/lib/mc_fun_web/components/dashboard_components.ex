@@ -18,89 +18,87 @@ defmodule McFunWeb.DashboardComponents do
     <div class="border-2 border-[#00ffff]/20 bg-[#0d0d14] p-4">
       <div class="text-[10px] tracking-widest text-[#00ffff]/60 mb-3">DEPLOY CONFIGURATION</div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <%!-- Model selector --%>
-        <div>
-          <label class="text-[10px] tracking-wider text-[#888] block mb-1">MODEL</label>
-          <select
-            id="deploy-model-select"
-            class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none focus:shadow-[0_0_8px_rgba(0,255,255,0.2)]"
-            phx-change="select_model"
-            name="model"
-            value={@selected_model}
-          >
-            <option :for={model <- @available_models} value={model}>
-              {model}
-            </option>
-            <option :if={@available_models == []} value={@selected_model}>
-              {@selected_model} (loading...)
-            </option>
-          </select>
+      <form phx-submit="deploy_bot" class="space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <%!-- Bot name --%>
+          <div>
+            <label class="text-[10px] tracking-wider text-[#888] block mb-1">NAME</label>
+            <input
+              type="text"
+              name="name"
+              value={@bot_spawn_name}
+              phx-change="bot_name_input"
+              phx-debounce="300"
+              placeholder="McFunBot"
+              class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
+            />
+          </div>
+
+          <%!-- Model selector --%>
+          <div>
+            <label class="text-[10px] tracking-wider text-[#888] block mb-1">MODEL</label>
+            <select
+              id="deploy-model-select"
+              class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none focus:shadow-[0_0_8px_rgba(0,255,255,0.2)]"
+              phx-change="select_model"
+              name="model"
+              value={@selected_model}
+            >
+              <option :for={model <- @available_models} value={model} selected={model == @selected_model}>
+                {model}
+              </option>
+              <option :if={@available_models == []} value={@selected_model}>
+                {@selected_model} (loading...)
+              </option>
+            </select>
+          </div>
+
+          <%!-- Preset selector --%>
+          <div>
+            <label class="text-[10px] tracking-wider text-[#888] block mb-1">PRESET</label>
+            <select
+              id="deploy-preset-select"
+              class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none focus:shadow-[0_0_8px_rgba(0,255,255,0.2)]"
+              phx-change="select_preset"
+              name="preset"
+              value={@selected_preset || "custom"}
+            >
+              <option value="custom">Custom</option>
+              <%= for {category, presets} <- McFun.Presets.by_category() do %>
+                <optgroup label={category |> to_string() |> String.upcase()}>
+                  <option :for={preset <- presets} value={preset.id}>
+                    {preset.name}
+                  </option>
+                </optgroup>
+              <% end %>
+            </select>
+          </div>
         </div>
 
-        <%!-- Preset selector --%>
+        <%!-- Personality textarea --%>
         <div>
-          <label class="text-[10px] tracking-wider text-[#888] block mb-1">PRESET</label>
-          <select
-            id="deploy-preset-select"
-            class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none focus:shadow-[0_0_8px_rgba(0,255,255,0.2)]"
-            phx-change="select_preset"
-            name="preset"
-            value={@selected_preset || "custom"}
-          >
-            <option value="custom">Custom</option>
-            <%= for {category, presets} <- McFun.Presets.by_category() do %>
-              <optgroup label={category |> to_string() |> String.upcase()}>
-                <option :for={preset <- presets} value={preset.id}>
-                  {preset.name}
-                </option>
-              </optgroup>
-            <% end %>
-          </select>
+          <label class="text-[10px] tracking-wider text-[#888] block mb-1">PERSONALITY</label>
+          <textarea
+            id="deploy-personality-text"
+            phx-change="update_deploy_personality"
+            name="personality"
+            phx-debounce="500"
+            rows="3"
+            class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none resize-y placeholder:text-[#444]"
+          >{@deploy_personality}</textarea>
         </div>
 
-        <%!-- Launch button --%>
-        <div class="flex items-end">
+        <%!-- Deploy button --%>
+        <div class="flex items-center justify-between">
           <button
-            phx-click="quick_launch"
-            class="w-full py-2 px-4 border-2 border-[#00ff88] text-[#00ff88] font-bold text-xs tracking-widest hover:bg-[#00ff88] hover:text-[#0a0a0f] transition-all"
+            type="submit"
+            class="py-2 px-6 border-2 border-[#00ff88] text-[#00ff88] font-bold text-xs tracking-widest hover:bg-[#00ff88] hover:text-[#0a0a0f] transition-all"
           >
-            DEPLOY McFunBot
+            DEPLOY
           </button>
+          <div class="text-[10px] text-[#444]">whitelist first: /whitelist add BotName</div>
         </div>
-      </div>
-
-      <%!-- Personality textarea --%>
-      <div class="mt-3">
-        <label class="text-[10px] tracking-wider text-[#888] block mb-1">PERSONALITY</label>
-        <textarea
-          id="deploy-personality-text"
-          phx-change="update_deploy_personality"
-          name="personality"
-          phx-debounce="500"
-          rows="3"
-          class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none resize-y placeholder:text-[#444]"
-        >{@deploy_personality}</textarea>
-      </div>
-
-      <%!-- Custom spawn --%>
-      <div class="mt-3 pt-3 border-t border-[#222]">
-        <form phx-submit="spawn_custom_bot" class="flex gap-2">
-          <input
-            type="text"
-            name="name"
-            value={@bot_spawn_name}
-            phx-change="bot_name_input"
-            phx-debounce="300"
-            placeholder="custom unit name..."
-            class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-1.5 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
-          />
-          <button type="submit" class="px-4 py-1.5 border border-[#00ffff] text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10">
-            SPAWN
-          </button>
-        </form>
-        <div class="text-[10px] text-[#444] mt-1">whitelist first: /whitelist add BotName</div>
-      </div>
+      </form>
     </div>
     """
   end
