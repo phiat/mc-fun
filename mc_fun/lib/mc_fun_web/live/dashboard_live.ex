@@ -11,9 +11,11 @@ defmodule McFunWeb.DashboardLive do
   def mount(_params, _session, socket) do
     if connected?(socket) do
       McFun.Events.subscribe(:all)
+
       for bot <- list_bots() do
         Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{bot}")
       end
+
       :timer.send_interval(5_000, self(), :refresh_status)
     end
 
@@ -69,6 +71,7 @@ defmodule McFunWeb.DashboardLive do
   def handle_event("change_bot_model", %{"bot" => bot_name, "model" => model}, socket) do
     try do
       McFun.ChatBot.set_model(bot_name, model)
+
       {:noreply,
        socket
        |> put_flash(:info, "#{bot_name} >> #{model}")
@@ -87,6 +90,7 @@ defmodule McFunWeb.DashboardLive do
     if name in socket.assigns.bots do
       # Bot already running — update ChatBot model/personality
       ensure_chatbot(name, model, personality)
+
       {:noreply,
        socket
        |> put_flash(:info, "#{name} already running — model: #{model}")
@@ -98,6 +102,7 @@ defmodule McFunWeb.DashboardLive do
           Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{name}")
 
           lv = self()
+
           Task.start(fn ->
             Process.sleep(2_000)
             ensure_chatbot(name, model, personality)
@@ -124,13 +129,15 @@ defmodule McFunWeb.DashboardLive do
   def handle_event("attach_chatbot", %{"bot" => name}, socket) do
     model = socket.assigns.selected_model
     ensure_chatbot(name, model)
+
     {:noreply,
      socket
      |> put_flash(:info, "ChatBot >> #{name} [#{model}]")
      |> assign(bot_statuses: build_bot_statuses())}
   end
 
-  def handle_event("teleport_bot", %{"bot" => bot, "player" => player}, socket) when player != "" do
+  def handle_event("teleport_bot", %{"bot" => bot, "player" => player}, socket)
+      when player != "" do
     McFun.Bot.teleport_to(bot, player)
     {:noreply, put_flash(socket, :info, "#{bot} >> tp to #{player}")}
   end
@@ -152,6 +159,7 @@ defmodule McFunWeb.DashboardLive do
       stop_chatbot(bot)
       McFun.BotSupervisor.stop_bot(bot)
     end
+
     # Optimistically clear; schedule a refresh to catch async cleanup
     Process.send_after(self(), :refresh_bots, 200)
     {:noreply, assign(socket, bots: [], bot_statuses: %{})}
@@ -174,6 +182,7 @@ defmodule McFunWeb.DashboardLive do
   def handle_event("save_personality", %{"bot" => bot, "personality" => personality}, socket) do
     try do
       McFun.ChatBot.set_personality(bot, personality)
+
       {:noreply,
        socket
        |> put_flash(:info, "#{bot} personality updated")
@@ -188,10 +197,13 @@ defmodule McFunWeb.DashboardLive do
     try do
       # Clear all conversations by iterating known players
       info = McFun.ChatBot.info(bot)
+
       for _player <- info[:conversation_players] || [] do
         McFun.ChatBot.set_personality(bot, info[:personality] || default_personality())
       end
+
       McFun.Bot.chat(bot, "Memory cleared!")
+
       {:noreply,
        socket
        |> put_flash(:info, "#{bot} conversations cleared")
@@ -217,7 +229,8 @@ defmodule McFunWeb.DashboardLive do
 
     case preset_atom && McFun.Presets.get(preset_atom) do
       {:ok, preset} ->
-        combined = String.trim(default_personality()) <> "\n\n" <> String.trim(preset.system_prompt)
+        combined =
+          String.trim(default_personality()) <> "\n\n" <> String.trim(preset.system_prompt)
 
         {:noreply,
          assign(socket,
@@ -245,10 +258,12 @@ defmodule McFunWeb.DashboardLive do
     case preset_atom && McFun.Presets.get(preset_atom) do
       {:ok, preset} ->
         # Append preset personality onto the base MC personality
-        combined = String.trim(default_personality()) <> "\n\n" <> String.trim(preset.system_prompt)
+        combined =
+          String.trim(default_personality()) <> "\n\n" <> String.trim(preset.system_prompt)
 
         try do
           McFun.ChatBot.set_personality(bot, combined)
+
           {:noreply,
            socket
            |> put_flash(:info, "#{bot} >> #{preset.name}")
@@ -302,6 +317,7 @@ defmodule McFunWeb.DashboardLive do
       {:ok, waypoints} when is_list(waypoints) ->
         tuples = Enum.map(waypoints, fn [x, y, z] -> {x, y, z} end)
         McFun.BotBehaviors.start_patrol(bot, tuples)
+
         {:noreply,
          socket
          |> put_flash(:info, "#{bot} patrol started (#{length(tuples)} waypoints)")
@@ -318,6 +334,7 @@ defmodule McFunWeb.DashboardLive do
 
     if target && target != "" do
       McFun.BotBehaviors.start_follow(bot, target)
+
       {:noreply,
        socket
        |> put_flash(:info, "#{bot} following #{target}")
@@ -334,6 +351,7 @@ defmodule McFunWeb.DashboardLive do
     z = safe_int(params["z"])
     radius = safe_int(params["radius"] || "8")
     McFun.BotBehaviors.start_guard(bot, {x, y, z}, radius: radius)
+
     {:noreply,
      socket
      |> put_flash(:info, "#{bot} guarding #{x},#{y},#{z} (r=#{radius})")
@@ -342,6 +360,7 @@ defmodule McFunWeb.DashboardLive do
 
   def handle_event("stop_behavior", %{"bot" => bot}, socket) do
     McFun.BotBehaviors.stop(bot)
+
     {:noreply,
      socket
      |> put_flash(:info, "#{bot} behavior stopped")
@@ -352,14 +371,17 @@ defmodule McFunWeb.DashboardLive do
 
   def handle_event("rcon_submit", %{"command" => cmd}, socket) when cmd != "" do
     lv = self()
+
     Task.start(fn ->
       result =
         case McFun.Rcon.command(cmd) do
           {:ok, response} -> response
           {:error, reason} -> "ERR: #{inspect(reason)}"
         end
+
       send(lv, {:rcon_result, cmd, result})
     end)
+
     {:noreply, assign(socket, rcon_input: "")}
   end
 
@@ -373,6 +395,7 @@ defmodule McFunWeb.DashboardLive do
 
   def handle_event("fire_effect", %{"effect" => effect}, socket) do
     target = socket.assigns.effect_target
+
     Task.start(fn ->
       case effect do
         "celebration" -> McFun.Effects.celebration(target)
@@ -383,6 +406,7 @@ defmodule McFunWeb.DashboardLive do
         _ -> :ok
       end
     end)
+
     {:noreply, put_flash(socket, :info, "FX #{effect} >> #{target}")}
   end
 
@@ -417,24 +441,35 @@ defmodule McFunWeb.DashboardLive do
   @impl true
   def handle_info(:refresh_status, socket) do
     lv = self()
+
     Task.start(fn ->
-      players = try do McFun.LogWatcher.online_players() catch _, _ -> [] end
+      players =
+        try do
+          McFun.LogWatcher.online_players()
+        catch
+          _, _ -> []
+        end
+
       send(lv, {:status_update, players})
     end)
+
     models = safe_model_ids()
     # Refresh bots list (detects new/removed bots) but do NOT rebuild bot_statuses —
     # those are updated incrementally via PubSub :bot_event messages.
     current_bots = list_bots()
     # Subscribe to any new bots we haven't seen yet
     known = socket.assigns.bots
+
     for bot <- current_bots, bot not in known do
       Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{bot}")
     end
-    {:noreply, assign(socket,
-      bots: current_bots,
-      rcon_status: check_rcon(),
-      available_models: if(models != [], do: models, else: socket.assigns.available_models)
-    )}
+
+    {:noreply,
+     assign(socket,
+       bots: current_bots,
+       rcon_status: check_rcon(),
+       available_models: if(models != [], do: models, else: socket.assigns.available_models)
+     )}
   end
 
   @impl true
@@ -452,7 +487,13 @@ defmodule McFunWeb.DashboardLive do
   @impl true
   def handle_info({:bot_event, bot_name, event_data}, socket) do
     event_type = Map.get(event_data, "event", "unknown")
-    event = %{type: :"bot_#{event_type}", data: Map.put(event_data, "bot", bot_name), at: DateTime.utc_now()}
+
+    event = %{
+      type: :"bot_#{event_type}",
+      data: Map.put(event_data, "bot", bot_name),
+      at: DateTime.utc_now()
+    }
+
     McFun.EventStore.push(event)
     events = [event | Enum.take(socket.assigns.events, 199)]
 
@@ -501,12 +542,14 @@ defmodule McFunWeb.DashboardLive do
   end
 
   defp safe_int(val) when is_integer(val), do: val
+
   defp safe_int(val) when is_binary(val) do
     case Integer.parse(val) do
       {n, _} -> n
       :error -> 0
     end
   end
+
   defp safe_int(_), do: 0
 
   defp update_bot_status(statuses, bot_name, updates) when is_map(updates) do
@@ -522,21 +565,39 @@ defmodule McFunWeb.DashboardLive do
 
   defp apply_bot_event(statuses, bot_name, "position", event_data) do
     updates = %{position: {event_data["x"], event_data["y"], event_data["z"]}}
+
     updates =
       case Map.get(event_data, "dimension") do
-        nil -> updates
-        dim -> Map.put(updates, :dimension, dim |> String.replace("minecraft:", "") |> String.replace("the_", ""))
+        nil ->
+          updates
+
+        dim ->
+          Map.put(
+            updates,
+            :dimension,
+            dim |> String.replace("minecraft:", "") |> String.replace("the_", "")
+          )
       end
+
     update_bot_status(statuses, bot_name, updates)
   end
 
   defp apply_bot_event(statuses, bot_name, "spawn", %{"position" => pos} = event_data) do
     updates = %{position: {pos["x"], pos["y"], pos["z"]}}
+
     updates =
       case Map.get(event_data, "dimension") do
-        nil -> updates
-        dim -> Map.put(updates, :dimension, dim |> String.replace("minecraft:", "") |> String.replace("the_", ""))
+        nil ->
+          updates
+
+        dim ->
+          Map.put(
+            updates,
+            :dimension,
+            dim |> String.replace("minecraft:", "") |> String.replace("the_", "")
+          )
       end
+
     update_bot_status(statuses, bot_name, updates)
   end
 
@@ -549,18 +610,19 @@ defmodule McFunWeb.DashboardLive do
       behavior_info = try_behavior_info(bot)
       bot_status = try_bot_status(bot)
 
-      {bot, %{
-        chatbot: chatbot_running?,
-        model: chatbot_info && chatbot_info[:model],
-        personality: chatbot_info && chatbot_info[:personality],
-        conversations: chatbot_info && chatbot_info[:conversations],
-        conversation_players: chatbot_info && chatbot_info[:conversation_players],
-        behavior: behavior_info,
-        position: bot_status[:position],
-        health: bot_status[:health],
-        food: bot_status[:food],
-        dimension: bot_status[:dimension]
-      }}
+      {bot,
+       %{
+         chatbot: chatbot_running?,
+         model: chatbot_info && chatbot_info[:model],
+         personality: chatbot_info && chatbot_info[:personality],
+         conversations: chatbot_info && chatbot_info[:conversations],
+         conversation_players: chatbot_info && chatbot_info[:conversation_players],
+         behavior: behavior_info,
+         position: bot_status[:position],
+         health: bot_status[:health],
+         food: bot_status[:food],
+         dimension: bot_status[:dimension]
+       }}
     end
   end
 
@@ -583,8 +645,11 @@ defmodule McFunWeb.DashboardLive do
     opts = [bot_name: name, model: model]
     opts = if personality, do: Keyword.put(opts, :personality, personality), else: opts
     spec = {McFun.ChatBot, opts}
+
     case DynamicSupervisor.start_child(McFun.BotSupervisor, spec) do
-      {:ok, _} -> :ok
+      {:ok, _} ->
+        :ok
+
       {:error, {:already_started, _}} ->
         # Update model/personality on existing ChatBot
         try do
@@ -593,8 +658,11 @@ defmodule McFunWeb.DashboardLive do
         catch
           _, _ -> :ok
         end
+
         :ok
-      {:error, reason} -> {:error, reason}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -613,20 +681,20 @@ defmodule McFunWeb.DashboardLive do
     """
     You are a friendly Minecraft bot. Keep responses to 1-2 sentences. No markdown.
 
-    CRITICAL — You control a real bot. To perform actions, you MUST include the exact trigger phrase in your response. One action per response. Pick the most important one.
+    You control a real bot in the game. When a player asks you to do something physical, use the appropriate tool. You can also respond with just text for conversation.
 
-    TRIGGER PHRASES (use exactly):
-    "on my way" or "coming to you" → move to the player
-    "I'll follow" or "following you" → follow the player
-    "I'll dig" or "mining" → dig the block you're looking at
-    "I'll jump" → jump
-    "I'll attack" or "attacking" → attack nearest entity
-    "I'll drop" or "dropping" → drop held item
-    "sneaking" → sneak/crouch
-    "I'll craft [item]" → craft an item
-    "I'll equip [item]" → equip an item
+    Available actions (via tools):
+    - goto_player: Move to a player
+    - follow_player: Follow a player around
+    - dig: Mine the block you're looking at
+    - jump: Jump
+    - attack: Attack nearest entity
+    - drop: Drop held item
+    - sneak: Toggle sneaking
+    - craft: Craft an item (give item name)
+    - equip: Equip an item (give item name)
 
-    If a player asks you to do something physical, ALWAYS include the trigger phrase. Without it, nothing happens. Example: player says "come here" → you say "on my way!" (this triggers movement). Player says "dig that" → you say "I'll dig it!" (this triggers dig).
+    Always respond naturally. If the player asks you to come, go, follow, dig, fight, etc., use the tool AND give a short reply.
     """
   end
 

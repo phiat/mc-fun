@@ -128,20 +128,37 @@ defmodule McFun.ChatBot do
   @impl true
   def handle_info({:bot_event, _, _}, state), do: {:noreply, state}
 
+  # LLM response with tool calls
+  @impl true
+  def handle_info({:llm_response, username, {:ok, response, tool_calls}}, state) do
+    # Send text reply (if any) to chat
+    if response != "" do
+      McFun.Bot.chat(state.bot_name, truncate(response, @max_response_length))
+    end
+
+    # Execute tool calls
+    for %{name: name, args: args} <- tool_calls do
+      Logger.info("ChatBot #{state.bot_name}: tool call #{name}(#{inspect(args)})")
+      execute_tool(state.bot_name, name, args, username)
+    end
+
+    state = add_bot_response(state, username, response)
+    {:noreply, state}
+  end
+
+  # LLM response text only (no tool calls) — fall back to regex parser
   @impl true
   def handle_info({:llm_response, username, {:ok, response}}, state) do
     response = truncate(response, @max_response_length)
-
-    # Send text response to chat
     McFun.Bot.chat(state.bot_name, response)
 
-    # Parse and execute any actions implied by the response
+    # Fallback: regex-based action parsing for models without tool support
     case McFun.ActionParser.parse(response, username) do
       [] ->
         :ok
 
       actions ->
-        Logger.info("ChatBot #{state.bot_name}: detected actions #{inspect(actions)} from response")
+        Logger.info("ChatBot #{state.bot_name}: regex fallback actions #{inspect(actions)}")
         McFun.ActionParser.execute(actions, state.bot_name)
     end
 
@@ -275,13 +292,16 @@ defmodule McFun.ChatBot do
         {:bot, msg} -> {:assistant, msg}
       end)
 
-    Logger.info("ChatBot #{state.bot_name}: sending to Groq [#{model}] for #{username} (#{length(messages)} msgs)")
+    Logger.info(
+      "ChatBot #{state.bot_name}: sending to Groq [#{model}] for #{username} (#{length(messages)} msgs)"
+    )
 
     Task.start_link(fn ->
       result =
         McFun.LLM.Groq.chat(state.personality, messages,
           max_tokens: 150,
-          model: model
+          model: model,
+          tools: bot_tools()
         )
 
       Logger.info("ChatBot Groq result: #{inspect(result, limit: 200)}")
@@ -345,24 +365,137 @@ defmodule McFun.ChatBot do
     Application.get_env(:mc_fun, :groq)[:model] || @fallback_model
   end
 
+  # Tool calling
+
+  defp bot_tools do
+    [
+      tool(
+        "goto_player",
+        "Move to a player's location",
+        %{
+          "player" => %{"type" => "string", "description" => "Player name to move to"}
+        },
+        ["player"]
+      ),
+      tool(
+        "follow_player",
+        "Follow a player around continuously",
+        %{
+          "player" => %{"type" => "string", "description" => "Player name to follow"}
+        },
+        ["player"]
+      ),
+      tool("dig", "Dig/mine the block you are looking at", %{}, []),
+      tool("jump", "Jump once", %{}, []),
+      tool("attack", "Attack the nearest entity", %{}, []),
+      tool("drop", "Drop the currently held item", %{}, []),
+      tool("sneak", "Toggle sneaking/crouching", %{}, []),
+      tool(
+        "craft",
+        "Craft an item",
+        %{
+          "item" => %{
+            "type" => "string",
+            "description" => "Item name to craft, e.g. wooden_pickaxe"
+          }
+        },
+        ["item"]
+      ),
+      tool(
+        "equip",
+        "Equip an item from inventory",
+        %{
+          "item" => %{
+            "type" => "string",
+            "description" => "Item name to equip, e.g. diamond_sword"
+          }
+        },
+        ["item"]
+      )
+    ]
+  end
+
+  defp tool(name, description, properties, required) do
+    %{
+      type: "function",
+      function: %{
+        name: name,
+        description: description,
+        parameters: %{
+          type: "object",
+          properties: properties,
+          required: required
+        }
+      }
+    }
+  end
+
+  defp execute_tool(bot, "goto_player", %{"player" => player}, _username) do
+    McFun.Bot.send_command(bot, %{action: "goto", target: player})
+  end
+
+  defp execute_tool(bot, "goto_player", _args, username) do
+    McFun.Bot.send_command(bot, %{action: "goto", target: username})
+  end
+
+  defp execute_tool(bot, "follow_player", %{"player" => player}, _username) do
+    McFun.Bot.send_command(bot, %{action: "follow", target: player})
+  end
+
+  defp execute_tool(bot, "follow_player", _args, username) do
+    McFun.Bot.send_command(bot, %{action: "follow", target: username})
+  end
+
+  defp execute_tool(bot, "dig", _args, _username) do
+    McFun.Bot.send_command(bot, %{action: "dig_looking_at"})
+  end
+
+  defp execute_tool(bot, "jump", _args, _username) do
+    McFun.Bot.send_command(bot, %{action: "jump"})
+  end
+
+  defp execute_tool(bot, "attack", _args, _username) do
+    McFun.Bot.send_command(bot, %{action: "attack"})
+  end
+
+  defp execute_tool(bot, "drop", _args, _username) do
+    McFun.Bot.drop(bot)
+  end
+
+  defp execute_tool(bot, "sneak", _args, _username) do
+    McFun.Bot.send_command(bot, %{action: "sneak"})
+  end
+
+  defp execute_tool(bot, "craft", %{"item" => item}, _username) do
+    McFun.Bot.craft(bot, item)
+  end
+
+  defp execute_tool(bot, "equip", %{"item" => item}, _username) do
+    McFun.Bot.equip(bot, item)
+  end
+
+  defp execute_tool(_bot, name, args, _username) do
+    Logger.warning("ChatBot: unknown tool call #{name}(#{inspect(args)})")
+  end
+
   defp default_personality do
     """
     You are a friendly Minecraft bot. Keep responses to 1-2 sentences. No markdown.
 
-    CRITICAL — You control a real bot. To perform actions, you MUST include the exact trigger phrase in your response. One action per response. Pick the most important one.
+    You control a real bot in the game. When a player asks you to do something physical, use the appropriate tool. You can also respond with just text for conversation.
 
-    TRIGGER PHRASES (use exactly):
-    "on my way" or "coming to you" → move to the player
-    "I'll follow" or "following you" → follow the player
-    "I'll dig" or "mining" → dig the block you're looking at
-    "I'll jump" → jump
-    "I'll attack" or "attacking" → attack nearest entity
-    "I'll drop" or "dropping" → drop held item
-    "sneaking" → sneak/crouch
-    "I'll craft [item]" → craft an item
-    "I'll equip [item]" → equip an item
+    Available actions (via tools):
+    - goto_player: Move to a player
+    - follow_player: Follow a player around
+    - dig: Mine the block you're looking at
+    - jump: Jump
+    - attack: Attack nearest entity
+    - drop: Drop held item
+    - sneak: Toggle sneaking
+    - craft: Craft an item (give item name)
+    - equip: Equip an item (give item name)
 
-    If a player asks you to do something physical, ALWAYS include the trigger phrase. Without it, nothing happens. Example: player says "come here" → you say "on my way!" (this triggers movement). Player says "dig that" → you say "I'll dig it!" (this triggers dig).
+    Always respond naturally. If the player asks you to come, go, follow, dig, fight, etc., use the tool AND give a short reply.
     """
   end
 end
