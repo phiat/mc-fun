@@ -32,27 +32,75 @@ Phoenix LiveView control panel for a Minecraft server. Manage bots, execute RCON
 
 ## Setup
 
+### 1. Infrastructure (Incus containers)
+
+Requires [Incus](https://linuxcontainers.org/incus/) installed on the host.
+
 ```bash
-cp .env.example .env        # configure RCON_HOST, GROQ_API_KEY, etc.
+bin/mc up                   # launch Minecraft + Postgres containers
+bin/mc status               # show IPs and connection strings
+bin/mc doctor               # verify everything is healthy
+```
+
+### 2. Elixir app (runs on host)
+
+```bash
+cp .env.example .env        # fill in IPs from `bin/mc status`
 mix deps.get
 cd apps/mc_fun/priv/mineflayer && npm install && cd ../../../..
 mix phx.server              # http://localhost:4000/dashboard
 ```
 
+### Infrastructure CLI (`bin/mc`)
+
+```bash
+bin/mc up [mc|pg|all]       # start containers (default: all)
+bin/mc down                 # stop all containers
+bin/mc status               # show containers, IPs, connection strings
+bin/mc connect mc            # shell into Minecraft container
+bin/mc connect pg            # psql into Postgres
+bin/mc logs mc 100           # last 100 lines of MC server logs
+bin/mc doctor               # health check
+```
+
+### Ports
+
+| Service    | Port  | Protocol |
+|------------|-------|----------|
+| Minecraft  | 25565 | TCP      |
+| RCON       | 25575 | TCP      |
+| Postgres   | 5432  | TCP      |
+| Phoenix    | 4000  | HTTP     |
+
 ### Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `RCON_HOST` | Minecraft server RCON host |
+| `RCON_HOST` | Minecraft container IP (from `bin/mc status`) |
 | `RCON_PORT` | RCON port (default: 25575) |
-| `RCON_PASSWORD` | RCON password |
-| `MC_HOST` | Minecraft server host (for bots) |
+| `RCON_PASSWORD` | RCON password (default: mc-fun-rcon) |
+| `MC_HOST` | Minecraft container IP (same as RCON_HOST) |
 | `MC_PORT` | Minecraft server port (default: 25565) |
 | `GROQ_API_KEY` | Groq API key for LLM chat |
+| `DATABASE_URL` | Postgres connection string (from `bin/mc status`) |
 
 ## Architecture
 
 ```
+  Host (WSL2)                          Incus Containers
+ ┌──────────────────────┐    ┌──────────────────────────────┐
+ │  Elixir App          │    │  mc-fun-mc (Ubuntu Noble)    │
+ │  Phoenix :4000       │───>│  Paper 1.21.4 + Java 21     │
+ │    McFun.Rcon (:25575)    │  Game :25565  RCON :25575    │
+ │    McFun.Bot  (:25565)    │  4GB RAM / 4 CPU             │
+ │                      │    └──────────────────────────────┘
+ │                      │    ┌──────────────────────────────┐
+ │                      │───>│  mc-fun-pg (Ubuntu Noble)    │
+ │                      │    │  Postgres 18 + TimescaleDB   │
+ └──────────────────────┘    │  Port :5432                  │
+                             │  1GB RAM / 2 CPU             │
+                             └──────────────────────────────┘
+
 Phoenix LiveView Dashboard (/dashboard)
     |
     |-- DashboardLive -------- Parent LiveView (tab routing, PubSub, shared state)
@@ -145,4 +193,5 @@ mix precommit                           # compile + format + credo + test
 - Node.js (mineflayer + mineflayer-pathfinder bridge)
 - Groq API (LLM)
 - Tailwind CSS
-- No database — all state in-memory
+- Incus containers (Paper MC server, Postgres + TimescaleDB)
+- No database yet — all state in-memory (Postgres provisioned for future event store)

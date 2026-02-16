@@ -1,0 +1,417 @@
+#!/usr/bin/env bash
+# mc — mc-fun CLI
+# Unified interface for Minecraft + Postgres container management.
+# All commands support --json for structured output.
+set -euo pipefail
+
+MC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROJECT="${MC_PROJECT:-mc-fun}"
+JSON="${MC_JSON:-false}"
+STATE_DIR="${MC_STATE_DIR:-${HOME}/.mc-fun}"
+STATE_FILE="${STATE_DIR}/state.json"
+
+# ─── Argument parsing ──────────────────────────────────────
+
+COMMAND="${1:-help}"
+shift || true
+
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --json) JSON=true ;;
+    *) ARGS+=("$arg") ;;
+  esac
+done
+
+# ─── Helpers ────────────────────────────────────────────────
+
+json_out() {
+  if [ "$JSON" = true ]; then
+    echo "$1"
+  fi
+}
+
+text_out() {
+  if [ "$JSON" != true ]; then
+    echo "$1"
+  fi
+}
+
+die() {
+  if [ "$JSON" = true ]; then
+    echo "{\"error\": \"$1\"}"
+  else
+    echo "ERROR: $1" >&2
+  fi
+  exit 1
+}
+
+require_incus() {
+  command -v incus &>/dev/null || die "incus not found. Install: https://linuxcontainers.org/incus/"
+}
+
+# Get all project containers as JSON array
+get_containers_json() {
+  require_incus
+  python3 -c "
+import subprocess, json, sys
+
+result = subprocess.run(['incus', 'list', '--format', 'json'], capture_output=True, text=True)
+if result.returncode != 0:
+    print('[]')
+    sys.exit(0)
+
+all_containers = json.loads(result.stdout) if result.stdout.strip() else []
+project = '${PROJECT}'
+containers = []
+
+for c in all_containers:
+    if not c['name'].startswith(project + '-'):
+        continue
+
+    ips = []
+    for net_name, net in (c.get('state') or {}).get('network', {}).items():
+        for addr in net.get('addresses', []):
+            if addr['family'] == 'inet' and addr['scope'] == 'global':
+                ips.append(addr['address'])
+
+    services = {}
+    if c['name'].endswith('-pg'):
+        ip = ips[0] if ips else None
+        ready = False
+        if ip and c['status'] == 'Running':
+            check = subprocess.run(
+                ['incus', 'exec', c['name'], '--', 'pg_isready', '-U', 'mc_fun'],
+                capture_output=True
+            )
+            ready = check.returncode == 0
+        services['postgres'] = {
+            'port': 5432,
+            'user': 'mc_fun',
+            'database': 'mc_fun',
+            'ready': ready
+        }
+
+    if c['name'].endswith('-mc'):
+        ip = ips[0] if ips else None
+        rcon_ready = False
+        game_ready = False
+        if ip and c['status'] == 'Running':
+            rcheck = subprocess.run(
+                ['incus', 'exec', c['name'], '--', 'bash', '-c', 'echo | nc -w2 localhost 25575'],
+                capture_output=True
+            )
+            rcon_ready = rcheck.returncode == 0
+            gcheck = subprocess.run(
+                ['incus', 'exec', c['name'], '--', 'bash', '-c', 'echo | nc -w2 localhost 25565'],
+                capture_output=True
+            )
+            game_ready = gcheck.returncode == 0
+        services['minecraft'] = {'port': 25565, 'ready': game_ready}
+        services['rcon'] = {'port': 25575, 'ready': rcon_ready}
+
+    containers.append({
+        'name': c['name'],
+        'status': c['status'].upper(),
+        'type': c.get('type', 'container'),
+        'ips': ips,
+        'services': services
+    })
+
+# Build connection strings
+conn_strings = {}
+for c in containers:
+    if 'postgres' in c['services'] and c['ips'] and c['services']['postgres']['ready']:
+        ip = c['ips'][0]
+        svc = c['services']['postgres']
+        conn_strings['DATABASE_URL'] = f\"postgres://{svc['user']}:{svc['user']}@{ip}:{svc['port']}/{svc['database']}\"
+    if 'rcon' in c['services'] and c['ips']:
+        ip = c['ips'][0]
+        conn_strings['RCON_HOST'] = ip
+        conn_strings['MC_HOST'] = ip
+
+output = {
+    'project': project,
+    'containers': containers,
+    'connection_strings': conn_strings
+}
+json.dump(output, sys.stdout, indent=2)
+print()
+" 2>/dev/null
+}
+
+# ─── Commands ───────────────────────────────────────────────
+
+cmd_status() {
+  require_incus
+  if [ "$JSON" = true ]; then
+    get_containers_json
+  else
+    local containers
+    containers=$(incus list --format csv -c nsN4 2>/dev/null | grep "^${PROJECT}-" || true)
+    if [ -z "$containers" ]; then
+      echo "No containers found for project '${PROJECT}'"
+      return
+    fi
+    echo "Containers for ${PROJECT}:"
+    echo ""
+    while IFS=, read -r name status type ip; do
+      printf "  %-25s %-10s %s\n" "$name" "$status" "$ip"
+    done <<< "$containers"
+
+    # Show connection info
+    local mc_ip pg_ip
+    mc_ip=$(incus list "${PROJECT}-mc" --format csv -c 4 2>/dev/null | cut -d' ' -f1 || true)
+    pg_ip=$(incus list "${PROJECT}-pg" --format csv -c 4 2>/dev/null | cut -d' ' -f1 || true)
+
+    if [ -n "$mc_ip" ] || [ -n "$pg_ip" ]; then
+      echo ""
+      echo "Connection info:"
+      if [ -n "$mc_ip" ]; then
+        echo "  Minecraft:    ${mc_ip}:25565"
+        echo "  RCON:         ${mc_ip}:25575"
+        echo "  RCON_HOST=${mc_ip}"
+        echo "  MC_HOST=${mc_ip}"
+      fi
+      if [ -n "$pg_ip" ]; then
+        echo "  DATABASE_URL=postgres://mc_fun:mc_fun@${pg_ip}:5432/mc_fun"
+      fi
+    fi
+  fi
+}
+
+cmd_up() {
+  local target="${ARGS[0]:-all}"
+  require_incus
+
+  case "$target" in
+    mc|minecraft)
+      text_out "==> Starting Minecraft..."
+      bash "${MC_DIR}/infra/scripts/setup-minecraft.sh" "${PROJECT}"
+      ;;
+    pg|postgres)
+      text_out "==> Starting Postgres..."
+      bash "${MC_DIR}/infra/scripts/setup-pg.sh" "${PROJECT}"
+      ;;
+    all)
+      text_out "==> Starting all services..."
+      bash "${MC_DIR}/infra/scripts/setup-pg.sh" "${PROJECT}"
+      bash "${MC_DIR}/infra/scripts/setup-minecraft.sh" "${PROJECT}"
+      ;;
+    *)
+      die "Unknown service: ${target}. Available: mc, pg, all"
+      ;;
+  esac
+
+  write_state
+}
+
+cmd_down() {
+  require_incus
+  local containers
+  containers=$(incus list --format csv -c n 2>/dev/null | grep "^${PROJECT}-" || true)
+
+  if [ -z "$containers" ]; then
+    text_out "No containers to stop for ${PROJECT}"
+    return
+  fi
+
+  for c in $containers; do
+    text_out "  Stopping ${c}..."
+    incus stop "$c" 2>/dev/null || true
+  done
+  text_out "==> All ${PROJECT} containers stopped"
+
+  write_state
+}
+
+cmd_logs() {
+  local target="${ARGS[0]:-mc}"
+  local lines="${ARGS[1]:-50}"
+  require_incus
+
+  local container="${PROJECT}-${target}"
+
+  case "$target" in
+    mc|minecraft)
+      container="${PROJECT}-mc"
+      incus exec "${container}" -- journalctl -u minecraft -n "${lines}" --no-pager 2>/dev/null || \
+        die "Could not get logs from ${container}"
+      ;;
+    pg|postgres)
+      container="${PROJECT}-pg"
+      incus exec "${container}" -- journalctl -u postgresql -n "${lines}" --no-pager 2>/dev/null || \
+        incus exec "${container}" -- journalctl -n "${lines}" --no-pager 2>/dev/null || \
+        die "Could not get logs from ${container}"
+      ;;
+    *)
+      incus exec "${PROJECT}-${target}" -- journalctl -n "${lines}" --no-pager 2>/dev/null || \
+        die "Could not get logs from ${PROJECT}-${target}"
+      ;;
+  esac
+}
+
+cmd_connect() {
+  local target="${ARGS[0]:-mc}"
+  require_incus
+
+  case "$target" in
+    pg|postgres)
+      local pg_ip
+      pg_ip=$(incus list "${PROJECT}-pg" --format csv -c 4 2>/dev/null | cut -d' ' -f1)
+      [ -n "$pg_ip" ] || die "Container ${PROJECT}-pg not running"
+      PGPASSWORD="mc_fun" psql -h "$pg_ip" -U "mc_fun" -d "mc_fun"
+      ;;
+    mc|minecraft)
+      incus exec "${PROJECT}-mc" -- bash
+      ;;
+    *)
+      incus exec "${PROJECT}-${target}" -- bash
+      ;;
+  esac
+}
+
+cmd_doctor() {
+  local fails=0
+
+  check_tool() {
+    local name="$1" cmd="$2"
+    if eval "$cmd" &>/dev/null; then
+      local ver
+      ver=$(eval "$3" 2>/dev/null || echo "ok")
+      printf "  ✓ %-12s %s\n" "$name" "$ver"
+    else
+      printf "  ✗ %-12s FAILED\n" "$name"
+      fails=$((fails + 1))
+    fi
+  }
+
+  echo "==> mc-fun health check"
+  echo ""
+  echo "Tools:"
+  check_tool "incus"    "incus version"          "incus version 2>/dev/null | head -1 | sed 's/Client version: //'"
+  check_tool "python3"  "python3 -c 'print(1)'"  "python3 --version | cut -d' ' -f2"
+  check_tool "psql"     "command -v psql"         "psql --version | head -1 | awk '{print \$3}'"
+  check_tool "elixir"   "iex -e 'System.halt(0)'" "elixir --version | tail -1 | cut -d' ' -f2"
+  check_tool "node"     "node -e 'console.log(1)'" "node --version"
+
+  echo ""
+  echo "Infrastructure:"
+
+  # Check Minecraft container
+  local mc_container="${PROJECT}-mc"
+  if incus info "$mc_container" &>/dev/null; then
+    local state
+    state=$(incus info "$mc_container" 2>/dev/null | grep "Status:" | awk '{print $2}')
+    if [ "$state" = "RUNNING" ]; then
+      printf "  ✓ %-12s %s\n" "mc-server" "$mc_container RUNNING"
+      check_tool "rcon" "incus exec $mc_container -- bash -c 'echo | nc -w2 localhost 25575'" "echo listening"
+      check_tool "game" "incus exec $mc_container -- bash -c 'echo | nc -w2 localhost 25565'" "echo listening"
+    else
+      printf "  ✗ %-12s %s\n" "mc-server" "$mc_container $state"
+      fails=$((fails + 1))
+    fi
+  else
+    printf "  - %-12s %s\n" "mc-server" "not created (run: bin/mc up mc)"
+  fi
+
+  # Check Postgres container
+  local pg_container="${PROJECT}-pg"
+  if incus info "$pg_container" &>/dev/null; then
+    local state
+    state=$(incus info "$pg_container" 2>/dev/null | grep "Status:" | awk '{print $2}')
+    if [ "$state" = "RUNNING" ]; then
+      printf "  ✓ %-12s %s\n" "postgres" "$pg_container RUNNING"
+      check_tool "pg-ready" "incus exec $pg_container -- pg_isready -U mc_fun" "echo accepting connections"
+    else
+      printf "  ✗ %-12s %s\n" "postgres" "$pg_container $state"
+      fails=$((fails + 1))
+    fi
+  else
+    printf "  - %-12s %s\n" "postgres" "not created (run: bin/mc up pg)"
+  fi
+
+  # Check .env
+  echo ""
+  echo "Config:"
+  if [ -f "${MC_DIR}/.env" ]; then
+    printf "  ✓ %-12s %s\n" ".env" "exists"
+  else
+    printf "  ✗ %-12s %s\n" ".env" "missing (cp .env.example .env)"
+    fails=$((fails + 1))
+  fi
+
+  echo ""
+  if [ "$fails" -gt 0 ]; then
+    echo "==> $fails check(s) FAILED"
+    return 1
+  else
+    echo "==> All checks passed"
+  fi
+}
+
+# ─── State file ─────────────────────────────────────────────
+
+write_state() {
+  mkdir -p "$STATE_DIR"
+  local state
+  state=$(JSON=true get_containers_json 2>/dev/null || echo '{"error": "could not get state"}')
+
+  python3 -c "
+import json, sys, datetime
+state = json.loads('''${state}''')
+state['updated_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+json.dump(state, open('${STATE_FILE}', 'w'), indent=2)
+" 2>/dev/null || true
+}
+
+# ─── Help ───────────────────────────────────────────────────
+
+cmd_help() {
+  cat <<'HELP'
+mc — mc-fun CLI
+
+Usage: mc <command> [args] [--json]
+
+Commands:
+  status              Show container status and connection strings
+  up [service]        Start containers (default: all). Services: mc, pg, all
+  down                Stop all project containers
+  logs [service] [n]  Show container logs (default: mc, 50 lines)
+  connect [service]   Connect to a service (bash for mc, psql for pg)
+  doctor              Verify tools and infra health
+  help                Show this help
+
+Flags:
+  --json              Output structured JSON
+
+Environment:
+  MC_PROJECT       Project name for container scoping (default: mc-fun)
+  MC_JSON=1        Always output JSON
+  RCON_PASSWORD    RCON password (default: mc-fun-rcon)
+
+Examples:
+  mc status                    # show all containers and IPs
+  mc up                        # launch everything
+  mc up mc                     # just the Minecraft server
+  mc up pg                     # just Postgres
+  mc down                      # stop all containers
+  mc connect mc                # shell into MC container
+  mc connect pg                # psql into Postgres
+  mc logs mc 100               # last 100 lines of MC server logs
+  mc doctor                    # health check
+HELP
+}
+
+# ─── Dispatch ───────────────────────────────────────────────
+
+case "$COMMAND" in
+  status)   cmd_status ;;
+  up)       cmd_up ;;
+  down)     cmd_down ;;
+  logs)     cmd_logs ;;
+  connect)  cmd_connect ;;
+  doctor|verify) cmd_doctor ;;
+  help|-h|--help) cmd_help ;;
+  *)        die "Unknown command: ${COMMAND}. Run 'mc help' for usage." ;;
+esac

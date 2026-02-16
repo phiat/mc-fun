@@ -1,0 +1,53 @@
+# JMX Exporter config for Minecraft Paper server
+# Loaded by jmx_prometheus_javaagent as a Java agent
+# Exposes JVM metrics as Prometheus-compatible /metrics endpoint
+
+lowercaseOutputName: true
+lowercaseOutputLabelNames: true
+
+rules:
+  # JVM Memory
+  - pattern: "java.lang<type=Memory><(HeapMemoryUsage|NonHeapMemoryUsage)>(\\w+)"
+    name: "jvm_memory_$1_$2"
+    type: GAUGE
+
+  # JVM Memory Pools
+  - pattern: "java.lang<type=MemoryPool, name=(.+)><Usage>(\\w+)"
+    name: "jvm_memory_pool_$2"
+    labels:
+      pool: "$1"
+    type: GAUGE
+
+  # GC
+  - pattern: "java.lang<type=GarbageCollector, name=(.+)><(CollectionCount|CollectionTime)>"
+    name: "jvm_gc_$2"
+    labels:
+      collector: "$1"
+    type: COUNTER
+
+  # Threads
+  - pattern: "java.lang<type=Threading><(ThreadCount|DaemonThreadCount|PeakThreadCount)>"
+    name: "jvm_threads_$1"
+    type: GAUGE
+
+  # Class Loading
+  - pattern: "java.lang<type=ClassLoading><(LoadedClassCount|TotalLoadedClassCount|UnloadedClassCount)>"
+    name: "jvm_classloading_$1"
+    type: GAUGE
+
+  # OS
+  - pattern: "java.lang<type=OperatingSystem><(OpenFileDescriptorCount|MaxFileDescriptorCount|SystemCpuLoad|ProcessCpuLoad|AvailableProcessors)>"
+    name: "jvm_os_$1"
+    type: GAUGE
+
+  # Runtime uptime
+  - pattern: "java.lang<type=Runtime><Uptime>"
+    name: "jvm_runtime_uptime_ms"
+    type: GAUGE
+
+  # Buffer pools (direct/mapped)
+  - pattern: "java.nio<type=BufferPool, name=(.+)><(Count|MemoryUsed|TotalCapacity)>"
+    name: "jvm_buffer_pool_$2"
+    labels:
+      pool: "$1"
+    type: GAUGE

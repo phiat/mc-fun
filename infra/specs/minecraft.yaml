@@ -1,0 +1,62 @@
+# Minecraft Paper server container spec for mc-fun
+# Used by: infra/scripts/setup-minecraft.sh
+#
+# Declarative description of the container.
+# The setup script reads this and provisions accordingly.
+
+name: "${PROJECT}-mc"
+image: images:ubuntu/noble
+
+packages:
+  repos:
+    - name: adoptium
+      key_url: https://packages.adoptium.net/artifactory/api/gpg/key/public
+      repo: "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb noble main"
+  install:
+    - temurin-21-jdk
+
+server:
+  type: paper
+  version: "1.21.4"
+  install_dir: /opt/minecraft
+  jar: paper.jar
+  jvm_args: "-Xms2G -Xmx3G"
+
+configure:
+  eula: true
+  server_properties:
+    server-port: 25565
+    enable-rcon: true
+    rcon.port: 25575
+    rcon.password: "mc-fun-rcon"
+    enforce-whitelist: true
+    white-list: true
+    motd: "mc-fun server"
+    max-players: 10
+    difficulty: normal
+    view-distance: 12
+    simulation-distance: 8
+    spawn-protection: 0
+    enable-command-block: true
+    snooper-enabled: false
+  ops:
+    - DonaldMahanahan
+  whitelist:
+    - DonaldMahanahan
+    - kurgenjlopp
+    - McFunBot
+
+healthcheck:
+  command: "bash -c 'echo | nc -w2 localhost 25575'"
+  interval_seconds: 2
+  retries: 60
+
+expose:
+  minecraft:
+    port: 25565
+  rcon:
+    port: 25575
+
+resources:
+  memory: 4096        # MB (4GB RAM)
+  cpu: 4              # 4 CPU cores

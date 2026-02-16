@@ -1,0 +1,47 @@
+# Postgres container spec for mc-fun
+# Used by: infra/scripts/setup-pg.sh
+#
+# Declarative description of the container.
+# The setup script reads this and provisions accordingly.
+
+name: "${PROJECT}-pg"
+image: images:ubuntu/noble
+
+packages:
+  repos:
+    - name: pgdg
+      key_url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+      repo: "deb [signed-by=/usr/share/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt noble-pgdg main"
+    - name: timescaledb
+      key_url: https://packagecloud.io/timescale/timescaledb/gpgkey
+      repo: "deb [signed-by=/usr/share/keyrings/timescaledb.gpg] https://packagecloud.io/timescale/timescaledb/ubuntu/ noble main"
+  install:
+    - postgresql-18
+    - timescaledb-2-postgresql-18
+
+configure:
+  - timescaledb-tune --quiet --yes
+  - sed -i "s/#listen_addresses.*/listen_addresses = '*'/" /etc/postgresql/18/main/postgresql.conf
+  - echo "host all all 0.0.0.0/0 md5" >> /etc/postgresql/18/main/pg_hba.conf
+  - systemctl restart postgresql
+  - systemctl enable postgresql
+
+databases:
+  - name: mc_fun
+    user: mc_fun
+    password: mc_fun
+    extensions:
+      - timescaledb
+
+healthcheck:
+  command: "pg_isready -U mc_fun"
+  interval_seconds: 1
+  retries: 15
+
+expose:
+  postgres:
+    port: 5432
+
+resources:
+  memory: 1024        # MB (1GB RAM)
+  cpu: 2              # 2 CPU cores
