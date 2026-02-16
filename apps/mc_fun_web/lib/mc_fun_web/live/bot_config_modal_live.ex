@@ -7,7 +7,8 @@ defmodule McFunWeb.BotConfigModalLive do
     {:ok,
      socket
      |> assign(assigns)
-     |> assign_new(:modal_tab, fn -> "llm" end)}
+     |> assign_new(:modal_tab, fn -> "llm" end)
+     |> assign_new(:pending_model, fn -> nil end)}
   end
 
   @impl true
@@ -61,23 +62,36 @@ defmodule McFunWeb.BotConfigModalLive do
             <%!-- Model --%>
             <div>
               <label class="text-[10px] tracking-wider text-[#888] block mb-1">MODEL</label>
-              <select
-                id={"modal-model-#{@bot}"}
-                class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none"
-                phx-change="change_bot_model"
-                phx-target={@myself}
-                name="model"
-                phx-value-bot={@bot}
-                value={@status && @status.model}
-              >
-                <option
-                  :for={model <- @available_models}
-                  value={model}
-                  selected={model == (@status && @status.model)}
+              <div class="flex gap-2">
+                <select
+                  id={"modal-model-#{@bot}"}
+                  class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none"
+                  phx-change="select_modal_model"
+                  phx-target={@myself}
+                  name="model"
+                  value={@pending_model || (@status && @status.model)}
                 >
-                  {model}
-                </option>
-              </select>
+                  <option
+                    :for={model <- @available_models}
+                    value={model}
+                    selected={model == (@pending_model || (@status && @status.model))}
+                  >
+                    {model}
+                  </option>
+                </select>
+                <button
+                  phx-click="apply_bot_model"
+                  phx-target={@myself}
+                  phx-value-bot={@bot}
+                  disabled={is_nil(@pending_model)}
+                  class={"px-4 py-2 border text-[10px] tracking-widest transition-all " <>
+                    if(@pending_model,
+                      do: "border-[#00ff88] text-[#00ff88] hover:bg-[#00ff88]/10",
+                      else: "border-[#333] text-[#444] cursor-not-allowed")}
+                >
+                  APPLY
+                </button>
+              </div>
             </div>
 
             <%!-- Personality --%>
@@ -385,11 +399,23 @@ defmodule McFunWeb.BotConfigModalLive do
     {:noreply, assign(socket, modal_tab: tab)}
   end
 
-  def handle_event("change_bot_model", %{"bot" => bot_name, "model" => model}, socket) do
-    McFun.ChatBot.set_model(bot_name, model)
-    notify_parent(socket, {:flash, :info, "#{bot_name} >> #{model}"})
-    notify_parent(socket, :refresh_bot_statuses)
-    {:noreply, socket}
+  def handle_event("select_modal_model", %{"model" => model}, socket) do
+    current = socket.assigns.status && socket.assigns.status.model
+    pending = if model == current, do: nil, else: model
+    {:noreply, assign(socket, pending_model: pending)}
+  end
+
+  def handle_event("apply_bot_model", %{"bot" => bot_name}, socket) do
+    model = socket.assigns.pending_model
+
+    if model do
+      McFun.ChatBot.set_model(bot_name, model)
+      notify_parent(socket, {:flash, :info, "#{bot_name} >> #{model}"})
+      notify_parent(socket, :refresh_bot_statuses)
+      {:noreply, assign(socket, pending_model: nil)}
+    else
+      {:noreply, socket}
+    end
   catch
     _, _ ->
       notify_parent(socket, {:flash, :error, "ChatBot not active for #{bot_name}"})

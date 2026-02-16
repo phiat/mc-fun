@@ -12,7 +12,8 @@ defmodule McFunWeb.UnitsPanelLive do
        Application.get_env(:mc_fun, :groq)[:model] || "openai/gpt-oss-20b"
      end)
      |> assign_new(:selected_preset, fn -> nil end)
-     |> assign_new(:deploy_personality, fn -> default_personality() end)}
+     |> assign_new(:deploy_personality, fn -> default_personality() end)
+     |> assign_new(:pending_card_models, fn -> %{} end)}
   end
 
   @impl true
@@ -48,6 +49,7 @@ defmodule McFunWeb.UnitsPanelLive do
             status={@bot_statuses[bot]}
             online_players={@online_players}
             available_models={@available_models}
+            pending_model={@pending_card_models[bot]}
             target={@myself}
           />
         </div>
@@ -146,11 +148,25 @@ defmodule McFunWeb.UnitsPanelLive do
 
   # --- Bot Card Actions ---
 
-  def handle_event("change_bot_model", %{"bot" => bot_name, "model" => model}, socket) do
-    McFun.ChatBot.set_model(bot_name, model)
-    notify_parent(socket, {:flash, :info, "#{bot_name} >> #{model}"})
-    notify_parent(socket, :refresh_bot_statuses)
-    {:noreply, socket}
+  def handle_event("select_card_model", %{"bot" => bot_name, "model" => model}, socket) do
+    current = get_in(socket.assigns, [:bot_statuses, bot_name, :model])
+    pending = if model == current, do: nil, else: model
+    pending_models = Map.put(socket.assigns.pending_card_models, bot_name, pending)
+    {:noreply, assign(socket, pending_card_models: pending_models)}
+  end
+
+  def handle_event("apply_card_model", %{"bot" => bot_name}, socket) do
+    model = socket.assigns.pending_card_models[bot_name]
+
+    if model do
+      McFun.ChatBot.set_model(bot_name, model)
+      pending_models = Map.delete(socket.assigns.pending_card_models, bot_name)
+      notify_parent(socket, {:flash, :info, "#{bot_name} >> #{model}"})
+      notify_parent(socket, :refresh_bot_statuses)
+      {:noreply, assign(socket, pending_card_models: pending_models)}
+    else
+      {:noreply, socket}
+    end
   catch
     _, _ ->
       notify_parent(socket, {:flash, :error, "ChatBot not active for #{bot_name}"})

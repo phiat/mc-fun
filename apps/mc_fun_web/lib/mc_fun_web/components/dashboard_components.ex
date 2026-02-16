@@ -120,6 +120,7 @@ defmodule McFunWeb.DashboardComponents do
   attr :status, :map, default: nil
   attr :online_players, :list, default: []
   attr :available_models, :list, default: []
+  attr :pending_model, :string, default: nil
   attr :target, :any, default: nil
 
   def bot_card(assigns) do
@@ -229,29 +230,41 @@ defmodule McFunWeb.DashboardComponents do
               </div>
             <% end %>
             <%!-- Model switcher --%>
-            <div class="pt-1">
+            <div class="pt-1 flex gap-1">
               <select
                 id={"model-select-#{@bot}"}
-                class="w-full bg-[#0a0a0f] border border-[#333] text-[#aaa] px-2 py-1 text-[10px] focus:border-[#00ffff] focus:outline-none"
-                phx-change="change_bot_model"
+                class="flex-1 bg-[#0a0a0f] border border-[#333] text-[#aaa] px-2 py-1 text-[10px] focus:border-[#00ffff] focus:outline-none"
+                phx-change="select_card_model"
                 phx-target={@target}
                 name="model"
                 phx-value-bot={@bot}
-                value={@status.model}
+                value={@pending_model || @status.model}
               >
                 <option
                   :for={model <- @available_models}
                   value={model}
-                  selected={model == (@status && @status.model)}
+                  selected={model == (@pending_model || (@status && @status.model))}
                 >
                   {model}
                 </option>
               </select>
+              <button
+                phx-click="apply_card_model"
+                phx-target={@target}
+                phx-value-bot={@bot}
+                disabled={is_nil(@pending_model)}
+                class={"px-2 py-1 border text-[9px] tracking-widest transition-all " <>
+                  if(@pending_model,
+                    do: "border-[#00ff88] text-[#00ff88] hover:bg-[#00ff88]/10",
+                    else: "border-[#333] text-[#444] cursor-not-allowed")}
+              >
+                APPLY
+              </button>
             </div>
             <%!-- Actions row --%>
             <div class="pt-1 flex gap-1">
               <button
-                :for={player <- @online_players}
+                :for={player <- Enum.reject(@online_players, &(&1 == @bot))}
                 id={"tp-#{@bot}-#{player}"}
                 phx-click="teleport_bot"
                 phx-target={@target}
