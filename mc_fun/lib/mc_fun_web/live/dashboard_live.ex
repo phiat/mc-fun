@@ -432,9 +432,14 @@ defmodule McFunWeb.DashboardLive do
       send(lv, {:status_update, players})
     end)
     models = safe_model_ids()
+    # Skip bot_statuses rebuild while config modal is open to avoid resetting form state
+    statuses =
+      if socket.assigns.selected_bot,
+        do: socket.assigns.bot_statuses,
+        else: build_bot_statuses()
     {:noreply, assign(socket,
       bots: list_bots(),
-      bot_statuses: build_bot_statuses(),
+      bot_statuses: statuses,
       rcon_status: check_rcon(),
       available_models: if(models != [], do: models, else: socket.assigns.available_models)
     )}
@@ -668,6 +673,7 @@ defmodule McFunWeb.DashboardLive do
               <div>
                 <label class="text-[10px] tracking-wider text-[#888] block mb-1">MODEL</label>
                 <select
+                  id="deploy-model-select"
                   class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none focus:shadow-[0_0_8px_rgba(0,255,255,0.2)]"
                   phx-change="select_model"
                   name="model"
@@ -689,6 +695,7 @@ defmodule McFunWeb.DashboardLive do
               <div>
                 <label class="text-[10px] tracking-wider text-[#888] block mb-1">PRESET</label>
                 <select
+                  id="deploy-preset-select"
                   class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none focus:shadow-[0_0_8px_rgba(0,255,255,0.2)]"
                   phx-change="select_preset"
                   name="preset"
@@ -723,8 +730,10 @@ defmodule McFunWeb.DashboardLive do
             <div class="mt-3">
               <label class="text-[10px] tracking-wider text-[#888] block mb-1">PERSONALITY</label>
               <textarea
+                id="deploy-personality-text"
                 phx-change="update_deploy_personality"
                 name="personality"
+                phx-debounce="500"
                 rows="3"
                 class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none resize-y placeholder:text-[#444]"
               >{@deploy_personality}</textarea>
@@ -916,7 +925,7 @@ defmodule McFunWeb.DashboardLive do
           <% bot = @selected_bot %>
           <% status = @bot_statuses[bot] %>
           <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70" phx-click="close_bot_config">
-            <div class="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-[#0d0d14] border-2 border-[#00ffff]/40 shadow-[0_0_30px_rgba(0,255,255,0.15)]" phx-click-away="close_bot_config">
+            <div class="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-[#0d0d14] border-2 border-[#00ffff]/40 shadow-[0_0_30px_rgba(0,255,255,0.15)]" phx-click-away="close_bot_config" onclick="event.stopPropagation()">
               <%!-- Modal header --%>
               <div class="flex items-center justify-between px-4 py-3 border-b border-[#222]">
                 <div class="flex items-center gap-2">
@@ -968,9 +977,10 @@ defmodule McFunWeb.DashboardLive do
                   <%!-- Personality --%>
                   <div>
                     <label class="text-[10px] tracking-wider text-[#888] block mb-1">PERSONALITY</label>
-                    <form phx-submit="save_personality">
+                    <form id={"personality-form-#{bot}"} phx-submit="save_personality">
                       <input type="hidden" name="bot" value={bot} />
                       <textarea
+                        id={"personality-text-#{bot}"}
                         name="personality"
                         rows="5"
                         class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none resize-y"
@@ -1053,9 +1063,10 @@ defmodule McFunWeb.DashboardLive do
                   <%!-- Patrol --%>
                   <div class="border border-[#222] p-3">
                     <div class="text-[10px] tracking-widest text-[#aa66ff] mb-2">PATROL</div>
-                    <form phx-submit="start_behavior_patrol">
+                    <form id={"patrol-form-#{bot}"} phx-submit="start_behavior_patrol">
                       <input type="hidden" name="bot" value={bot} />
                       <input
+                        id={"patrol-waypoints-#{bot}"}
                         type="text"
                         name="waypoints"
                         placeholder="[[0,64,0],[10,64,10],[20,64,0]]"
@@ -1070,10 +1081,11 @@ defmodule McFunWeb.DashboardLive do
                   <%!-- Follow --%>
                   <div class="border border-[#222] p-3">
                     <div class="text-[10px] tracking-widest text-[#aa66ff] mb-2">FOLLOW</div>
-                    <form phx-submit="start_behavior_follow">
+                    <form id={"follow-form-#{bot}"} phx-submit="start_behavior_follow">
                       <input type="hidden" name="bot" value={bot} />
                       <div class="flex gap-2">
                         <select
+                          id={"follow-target-#{bot}"}
                           name="target"
                           class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-1.5 text-xs focus:border-[#00ffff] focus:outline-none"
                         >
@@ -1089,7 +1101,7 @@ defmodule McFunWeb.DashboardLive do
                   <%!-- Guard --%>
                   <div class="border border-[#222] p-3">
                     <div class="text-[10px] tracking-widest text-[#aa66ff] mb-2">GUARD</div>
-                    <form phx-submit="start_behavior_guard" class="space-y-2">
+                    <form id={"guard-form-#{bot}"} phx-submit="start_behavior_guard" class="space-y-2">
                       <input type="hidden" name="bot" value={bot} />
                       <div class="grid grid-cols-4 gap-2">
                         <div :for={{label, name, default} <- [{"X", "x", "0"}, {"Y", "y", "64"}, {"Z", "z", "0"}, {"R", "radius", "8"}]}>
@@ -1112,9 +1124,10 @@ defmodule McFunWeb.DashboardLive do
                   <%!-- Chat --%>
                   <div class="border border-[#222] p-3">
                     <div class="text-[10px] tracking-widest text-[#00ffff] mb-2">CHAT</div>
-                    <form phx-submit="bot_action_chat" class="flex gap-2">
+                    <form id={"chat-form-#{bot}"} phx-submit="bot_action_chat" class="flex gap-2">
                       <input type="hidden" name="bot" value={bot} />
                       <input
+                        id={"chat-msg-#{bot}"}
                         type="text" name="message" placeholder="say something..."
                         class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-1.5 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
                       />
@@ -1127,7 +1140,7 @@ defmodule McFunWeb.DashboardLive do
                   <%!-- Goto --%>
                   <div class="border border-[#222] p-3">
                     <div class="text-[10px] tracking-widest text-[#00ffff] mb-2">GOTO</div>
-                    <form phx-submit="bot_action_goto" class="space-y-2">
+                    <form id={"goto-form-#{bot}"} phx-submit="bot_action_goto" class="space-y-2">
                       <input type="hidden" name="bot" value={bot} />
                       <div class="grid grid-cols-3 gap-2">
                         <div :for={{label, name} <- [{"X", "x"}, {"Y", "y"}, {"Z", "z"}]}>
