@@ -328,9 +328,13 @@ defmodule McFun.ChatBot do
     Task.start_link(fn ->
       # Get environment context
       survey_context = fetch_survey(bot_name)
+      bot_status = format_bot_status(bot_name)
+      chat_history = format_recent_chat(history)
 
       system_prompt =
-        state.personality <> "\n\n" <> action_instructions(use_tools) <> survey_context
+        state.personality <>
+          "\n\n" <>
+          action_instructions(use_tools) <> survey_context <> bot_status <> chat_history
 
       result =
         Groq.chat(system_prompt, messages,
@@ -513,6 +517,52 @@ defmodule McFun.ChatBot do
   defp format_vitals(nil, _), do: []
   defp format_vitals(health, food), do: "Health: #{trunc(health)}/20, Food: #{food}/20"
 
+  defp format_bot_status(bot_name) do
+    action_str =
+      case McFun.Bot.current_action(bot_name) do
+        %{action: action, source: source, started_at: started_at} ->
+          elapsed = DateTime.diff(DateTime.utc_now(), started_at, :second)
+          "Current action: #{action} (#{source}-initiated, started #{elapsed}s ago)"
+
+        nil ->
+          "Current action: idle"
+      end
+
+    behavior_str =
+      case McFun.BotBehaviors.info(bot_name) do
+        %{behavior: behavior} ->
+          paused =
+            case McFun.Bot.current_action(bot_name) do
+              %{source: :tool} -> " (paused - tool action in progress)"
+              _ -> ""
+            end
+
+          "Active behavior: #{behavior}#{paused}"
+
+        _ ->
+          "Active behavior: none"
+      end
+
+    "\n[BOT STATUS]\n#{action_str}\n#{behavior_str}"
+  end
+
+  @recent_chat_limit 10
+  defp format_recent_chat(history) do
+    entries =
+      history
+      |> Enum.take(@recent_chat_limit)
+      |> Enum.reverse()
+      |> Enum.map(fn
+        {:player, msg} -> "Player: #{msg}"
+        {:bot, msg} -> "Bot: #{msg}"
+      end)
+
+    case entries do
+      [] -> ""
+      lines -> "\n[RECENT CHAT]\n" <> Enum.join(lines, "\n")
+    end
+  end
+
   # Models that support OpenAI-style tool/function calling.
   # Compound models do internal tool calling (websearch etc) and reject external tools.
   @tool_capable_prefixes ~w(llama qwen openai/ meta-llama/ moonshotai/)
@@ -600,6 +650,12 @@ defmodule McFun.ChatBot do
           }
         },
         ["item"]
+      ),
+      tool(
+        "stop",
+        "Stop the current action (digging, moving, following). Use when asked to stop or cancel.",
+        %{},
+        []
       )
     ]
   end
@@ -620,39 +676,39 @@ defmodule McFun.ChatBot do
   end
 
   defp execute_tool(bot, "goto_player", %{"player" => player}, _username) do
-    McFun.Bot.send_command(bot, %{action: "goto", target: player})
+    McFun.Bot.send_command(bot, %{action: "goto", target: player}, source: :tool)
   end
 
   defp execute_tool(bot, "goto_player", _args, username) do
-    McFun.Bot.send_command(bot, %{action: "goto", target: username})
+    McFun.Bot.send_command(bot, %{action: "goto", target: username}, source: :tool)
   end
 
   defp execute_tool(bot, "follow_player", %{"player" => player}, _username) do
-    McFun.Bot.send_command(bot, %{action: "follow", target: player})
+    McFun.Bot.send_command(bot, %{action: "follow", target: player}, source: :tool)
   end
 
   defp execute_tool(bot, "follow_player", _args, username) do
-    McFun.Bot.send_command(bot, %{action: "follow", target: username})
+    McFun.Bot.send_command(bot, %{action: "follow", target: username}, source: :tool)
   end
 
   defp execute_tool(bot, "dig", _args, _username) do
-    McFun.Bot.send_command(bot, %{action: "dig_looking_at"})
+    McFun.Bot.send_command(bot, %{action: "dig_looking_at"}, source: :tool)
   end
 
   defp execute_tool(bot, "find_and_dig", %{"block_type" => block_type}, _username) do
-    McFun.Bot.find_and_dig(bot, block_type)
+    McFun.Bot.send_command(bot, %{action: "find_and_dig", block_type: block_type}, source: :tool)
   end
 
   defp execute_tool(bot, "dig_area", args, _username) do
-    McFun.Bot.dig_area(bot, args)
+    McFun.Bot.dig_area(bot, args, source: :tool)
   end
 
   defp execute_tool(bot, "jump", _args, _username) do
-    McFun.Bot.send_command(bot, %{action: "jump"})
+    McFun.Bot.send_command(bot, %{action: "jump"}, source: :tool)
   end
 
   defp execute_tool(bot, "attack", _args, _username) do
-    McFun.Bot.send_command(bot, %{action: "attack"})
+    McFun.Bot.send_command(bot, %{action: "attack"}, source: :tool)
   end
 
   defp execute_tool(bot, "drop", _args, _username) do
@@ -660,7 +716,7 @@ defmodule McFun.ChatBot do
   end
 
   defp execute_tool(bot, "sneak", _args, _username) do
-    McFun.Bot.send_command(bot, %{action: "sneak"})
+    McFun.Bot.send_command(bot, %{action: "sneak"}, source: :tool)
   end
 
   defp execute_tool(bot, "craft", %{"item" => item}, _username) do
@@ -671,13 +727,17 @@ defmodule McFun.ChatBot do
     McFun.Bot.equip(bot, item)
   end
 
+  defp execute_tool(bot, "stop", _args, _username) do
+    McFun.Bot.stop_action(bot)
+  end
+
   defp execute_tool(_bot, name, args, _username) do
     Logger.warning("ChatBot: unknown tool call #{name}(#{inspect(args)})")
   end
 
   defp action_instructions(true = _use_tools) do
     """
-    You control a real bot. When a player asks you to do something physical, use the appropriate tool. IMPORTANT: You MUST always include a text response in addition to any tool calls — never return only a tool call with no message. Available tools: goto_player, follow_player, dig, find_and_dig, dig_area (width/height/depth for rooms/tunnels), jump, attack, drop, sneak, craft, equip.
+    You control a real bot. When a player asks you to do something physical, use the appropriate tool. IMPORTANT: You MUST always include a text response in addition to any tool calls — never return only a tool call with no message. Available tools: goto_player, follow_player, dig, find_and_dig, dig_area (width/height/depth for rooms/tunnels), jump, attack, drop, sneak, craft, equip, stop. Use 'stop' when the player asks you to stop or cancel what you're doing.
 
     CRITICAL: Your response MUST start with "REPLY:" followed by your chat message. Do NOT include any thinking, reasoning, or analysis. Only output what the player should see.
     Example: REPLY: Sure thing, I'll dig that for you!

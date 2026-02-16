@@ -6,7 +6,7 @@ defmodule McFun.Bot do
   use GenServer
   require Logger
 
-  defstruct [:name, :port, :listeners, :position, :health, :food, :dimension]
+  defstruct [:name, :port, :listeners, :position, :health, :food, :dimension, :current_action]
 
   # Client API
 
@@ -17,6 +17,25 @@ defmodule McFun.Bot do
 
   def send_command(bot_name, command) when is_map(command) do
     GenServer.call(via(bot_name), {:command, command})
+  end
+
+  @doc "Send a command with source tracking (:tool or :behavior)."
+  def send_command(bot_name, command, opts) when is_map(command) and is_list(opts) do
+    GenServer.call(via(bot_name), {:command, command, opts})
+  end
+
+  @doc "Get the current active action (nil if idle)."
+  def current_action(bot_name) do
+    GenServer.call(via(bot_name), :current_action)
+  catch
+    :exit, _ -> nil
+  end
+
+  @doc "Stop the current action and clear action state."
+  def stop_action(bot_name) do
+    GenServer.call(via(bot_name), :stop_action)
+  catch
+    :exit, _ -> {:error, :not_found}
   end
 
   def chat(bot_name, message) do
@@ -93,11 +112,11 @@ defmodule McFun.Bot do
   end
 
   @doc "Dig a rectangular area. Args: width, height, depth (uses bot's current position as origin)."
-  def dig_area(bot_name, args) when is_map(args) do
+  def dig_area(bot_name, args, opts \\ []) when is_map(args) do
     # Get bot's current position for the origin
     case status(bot_name) do
       %{position: {x, y, z}} when is_number(x) ->
-        send_command(bot_name, %{
+        cmd = %{
           action: "dig_area",
           x: trunc(x),
           y: trunc(y),
@@ -105,7 +124,13 @@ defmodule McFun.Bot do
           width: args["width"] || 5,
           height: args["height"] || 3,
           depth: args["depth"] || 5
-        })
+        }
+
+        if opts == [] do
+          send_command(bot_name, cmd)
+        else
+          send_command(bot_name, cmd, opts)
+        end
 
       _ ->
         Logger.warning("Bot #{bot_name}: can't dig_area, no position")
@@ -170,6 +195,28 @@ defmodule McFun.Bot do
       {:reply, :ok, state}
     else
       Logger.warning("Bot #{state.name}: port dead, can't send command")
+      {:reply, {:error, :port_dead}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:command, command, opts}, _from, state) do
+    source = Keyword.get(opts, :source, :unknown)
+    {:reply, :ok, send_sourced_command(state, command, source)}
+  end
+
+  @impl true
+  def handle_call(:current_action, _from, state) do
+    {:reply, state.current_action, state}
+  end
+
+  @impl true
+  def handle_call(:stop_action, _from, state) do
+    if state.port && Port.info(state.port) do
+      json = Jason.encode!(%{action: "stop"}) <> "\n"
+      Port.command(state.port, json)
+      {:reply, :ok, clear_action(state)}
+    else
       {:reply, {:error, :port_dead}, state}
     end
   end
@@ -265,6 +312,28 @@ defmodule McFun.Bot do
     if dimension, do: %{new_state | dimension: format_dimension(dimension)}, else: new_state
   end
 
+  # Action completion events — clear current_action
+  defp update_state_from_event(state, %{"event" => event})
+       when event in [
+              "goto_done",
+              "dig_done",
+              "dig_area_done",
+              "dig_area_cancelled",
+              "find_and_dig_done",
+              "stopped"
+            ] do
+    Logger.info("Bot #{state.name}: action completed (#{event})")
+    broadcast_action_change(state.name, nil)
+    clear_action(state)
+  end
+
+  defp update_state_from_event(state, %{"event" => event})
+       when event in ["find_and_dig_error"] do
+    Logger.warning("Bot #{state.name}: action error (#{event})")
+    broadcast_action_change(state.name, nil)
+    clear_action(state)
+  end
+
   defp update_state_from_event(state, _event), do: state
 
   defp format_dimension(nil), do: nil
@@ -277,7 +346,46 @@ defmodule McFun.Bot do
 
   defp format_dimension(_), do: nil
 
+  defp send_sourced_command(state, command, :behavior) when state.current_action != nil do
+    if state.current_action.source == :tool, do: state, else: do_send(state, command, :behavior)
+  end
+
+  defp send_sourced_command(state, command, source) do
+    do_send(state, command, source)
+  end
+
+  defp do_send(state, command, source) do
+    if state.port && Port.info(state.port) do
+      json = Jason.encode!(command) <> "\n"
+      Port.command(state.port, json)
+      if source == :tool, do: set_action(state, action_atom(command), source), else: state
+    else
+      Logger.warning("Bot #{state.name}: port dead, can't send command")
+      state
+    end
+  end
+
   defp broadcast(bot_name, event) do
     Phoenix.PubSub.broadcast(McFun.PubSub, "bot:#{bot_name}", {:bot_event, bot_name, event})
   end
+
+  defp broadcast_action_change(bot_name, action) do
+    Phoenix.PubSub.broadcast(
+      McFun.PubSub,
+      "bot:#{bot_name}",
+      {:bot_event, bot_name, %{"event" => "action_change", "action" => action}}
+    )
+  end
+
+  defp set_action(state, action_name, source) do
+    action = %{action: action_name, source: source, started_at: DateTime.utc_now()}
+    broadcast_action_change(state.name, action)
+    %{state | current_action: action}
+  end
+
+  defp clear_action(state), do: %{state | current_action: nil}
+
+  defp action_atom(%{action: action}) when is_binary(action), do: String.to_atom(action)
+  defp action_atom(%{"action" => action}) when is_binary(action), do: String.to_atom(action)
+  defp action_atom(_), do: :unknown
 end

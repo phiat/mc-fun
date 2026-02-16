@@ -133,9 +133,17 @@ defmodule McFun.BotBehaviors do
 
   @impl true
   def handle_info(:tick, state) do
-    state = execute_behavior(state)
-    schedule_tick()
-    {:noreply, state}
+    case McFun.Bot.current_action(state.bot_name) do
+      %{source: :tool} ->
+        # Tool action active — skip this tick, don't interfere
+        schedule_tick()
+        {:noreply, state}
+
+      _ ->
+        state = execute_behavior(state)
+        schedule_tick()
+        {:noreply, state}
+    end
   end
 
   @impl true
@@ -150,12 +158,11 @@ defmodule McFun.BotBehaviors do
     waypoints = state.params.waypoints
     {x, y, z} = Enum.at(waypoints, state.current_index)
 
-    McFun.Bot.send_command(state.bot_name, %{
-      action: "goto",
-      x: x,
-      y: y,
-      z: z
-    })
+    McFun.Bot.send_command(
+      state.bot_name,
+      %{action: "goto", x: x, y: y, z: z},
+      source: :behavior
+    )
 
     next_index = rem(state.current_index + 1, length(waypoints))
     %{state | current_index: next_index}
@@ -164,12 +171,11 @@ defmodule McFun.BotBehaviors do
   defp execute_behavior(%{behavior: :follow} = state) do
     target = state.params.target
 
-    # Use bot's pathfinder to go to the target player
-    McFun.Bot.send_command(state.bot_name, %{
-      action: "follow",
-      target: target,
-      distance: @follow_distance
-    })
+    McFun.Bot.send_command(
+      state.bot_name,
+      %{action: "follow", target: target, distance: @follow_distance},
+      source: :behavior
+    )
 
     state
   end
@@ -177,13 +183,11 @@ defmodule McFun.BotBehaviors do
   defp execute_behavior(%{behavior: :guard} = state) do
     {gx, gy, gz} = state.params.position
 
-    # Move back toward guard position
-    McFun.Bot.send_command(state.bot_name, %{
-      action: "goto",
-      x: gx,
-      y: gy,
-      z: gz
-    })
+    McFun.Bot.send_command(
+      state.bot_name,
+      %{action: "goto", x: gx, y: gy, z: gz},
+      source: :behavior
+    )
 
     state
   end

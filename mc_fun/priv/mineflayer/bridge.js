@@ -28,6 +28,9 @@ function log(msg) {
 // Track movement fallback timers to avoid leaks
 let movementTimer = null;
 
+// Cancellation flag for long-running dig_area
+let digAreaCancelled = false;
+
 log(`Connecting as ${username} to ${host}:${port}`);
 
 const bot = mineflayer.createBot({
@@ -239,6 +242,7 @@ function handleCommand(cmd) {
 
       if (bot.pathfinder && bot.pathfinder.movements) {
         bot.pathfinder.setGoal(new GoalNear(gx, gy, gz, 2));
+        bot.once('goal_reached', () => send({ event: 'goto_done', x: gx, y: gy, z: gz }));
       } else {
         // Simple fallback: look toward target and walk
         const pos = bot.entity.position;
@@ -288,6 +292,7 @@ function handleCommand(cmd) {
         bot.dig(block)
           .then(() => {
             send({ event: 'ack', action: 'dig', block: block.name, x, y, z });
+            send({ event: 'dig_done', block: block.name, x, y, z });
           })
           .catch((err) => {
             send({ event: 'error', action: 'dig', message: err.message });
@@ -488,10 +493,17 @@ function handleCommand(cmd) {
           const block = bot.blockAt(targetPos);
           if (block && block.name !== 'air') {
             bot.dig(block)
-              .then(() => send({ event: 'ack', action: 'find_and_dig', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z }))
-              .catch(err => send({ event: 'error', action: 'find_and_dig', message: err.message }));
+              .then(() => {
+                send({ event: 'ack', action: 'find_and_dig', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z });
+                send({ event: 'find_and_dig_done', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z });
+              })
+              .catch(err => {
+                send({ event: 'error', action: 'find_and_dig', message: err.message });
+                send({ event: 'find_and_dig_error', error: err.message });
+              });
           } else {
             send({ event: 'ack', action: 'find_and_dig', block: blockType, message: 'block already gone' });
+            send({ event: 'find_and_dig_done', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z });
           }
         });
         // Timeout if pathfinding takes too long
@@ -499,6 +511,7 @@ function handleCommand(cmd) {
           if (bot.pathfinder.isMoving()) {
             bot.pathfinder.setGoal(null);
             send({ event: 'error', action: 'find_and_dig', message: `Couldn't reach ${blockType} in time` });
+            send({ event: 'find_and_dig_error', error: `Couldn't reach ${blockType} in time` });
           }
         }, 15000);
       } else {
@@ -506,10 +519,17 @@ function handleCommand(cmd) {
         const dist = bot.entity.position.distanceTo(targetPos);
         if (dist <= 5) {
           bot.dig(targetBlock)
-            .then(() => send({ event: 'ack', action: 'find_and_dig', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z }))
-            .catch(err => send({ event: 'error', action: 'find_and_dig', message: err.message }));
+            .then(() => {
+              send({ event: 'ack', action: 'find_and_dig', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z });
+              send({ event: 'find_and_dig_done', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z });
+            })
+            .catch(err => {
+              send({ event: 'error', action: 'find_and_dig', message: err.message });
+              send({ event: 'find_and_dig_error', error: err.message });
+            });
         } else {
           send({ event: 'error', action: 'find_and_dig', message: `${blockType} found at ${targetPos} but too far (${Math.round(dist)} blocks) and no pathfinder` });
+          send({ event: 'find_and_dig_error', error: `${blockType} too far and no pathfinder` });
         }
       }
       break;
@@ -533,11 +553,16 @@ function handleCommand(cmd) {
         }
       }
 
+      digAreaCancelled = false;
       send({ event: 'ack', action: 'dig_area', message: `Starting to dig ${w}x${h}x${d} area (${blocks.length} blocks)` });
 
       async function digNext(idx) {
+        if (digAreaCancelled) {
+          send({ event: 'dig_area_cancelled', blocksRemoved: idx });
+          return;
+        }
         if (idx >= blocks.length) {
-          send({ event: 'ack', action: 'dig_area', message: `Done! Dug ${blocks.length} blocks.` });
+          send({ event: 'dig_area_done', blocksRemoved: blocks.length });
           return;
         }
         const pos = blocks[idx];
@@ -587,6 +612,14 @@ function handleCommand(cmd) {
       digNext(0);
       break;
     }
+
+    case 'stop':
+      try { bot.pathfinder.stop(); } catch (_) {}
+      try { bot.stopDigging(); } catch (_) {}
+      bot.clearControlStates();
+      digAreaCancelled = true;
+      send({ event: 'stopped' });
+      break;
 
     case 'quit':
       bot.quit();
