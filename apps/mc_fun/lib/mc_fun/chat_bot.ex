@@ -639,7 +639,28 @@ defmodule McFun.ChatBot do
       ),
       tool("jump", "Jump once", %{}, []),
       tool("attack", "Attack the nearest entity", %{}, []),
-      tool("drop", "Drop the currently held item", %{}, []),
+      tool(
+        "look",
+        "Turn to face a direction. Use yaw: 0=south, 1.57=west, 3.14=north, -1.57=east. Pitch: 0=level, -0.5=up, 0.5=down. Use to turn around before digging.",
+        %{
+          "yaw" => %{
+            "type" => "number",
+            "description" =>
+              "Horizontal angle in radians. 0=south, 1.57=west, 3.14=north, -1.57=east"
+          },
+          "pitch" => %{
+            "type" => "number",
+            "description" => "Vertical angle in radians. 0=level, negative=up, positive=down"
+          }
+        },
+        ["yaw"]
+      ),
+      tool(
+        "drop",
+        "Drop/throw the currently held item on the ground. Only use when explicitly asked to drop or throw items.",
+        %{},
+        []
+      ),
       tool("sneak", "Toggle sneaking/crouching", %{}, []),
       tool(
         "craft",
@@ -751,6 +772,12 @@ defmodule McFun.ChatBot do
     McFun.Bot.send_command(bot, %{action: "attack"}, source: :tool)
   end
 
+  defp execute_tool(bot, "look", args, _username) do
+    yaw = args["yaw"] || 0
+    pitch = args["pitch"] || 0
+    McFun.Bot.send_command(bot, %{action: "look", yaw: yaw, pitch: pitch}, source: :tool)
+  end
+
   defp execute_tool(bot, "drop", _args, _username) do
     McFun.Bot.drop(bot)
   end
@@ -793,7 +820,7 @@ defmodule McFun.ChatBot do
 
   defp action_instructions(true = _use_tools) do
     """
-    You control a real bot. When a player asks you to do something physical, use the appropriate tool. IMPORTANT: You MUST always include a text response in addition to any tool calls — never return only a tool call with no message. Available tools: goto_player, follow_player, dig, find_and_dig, dig_area (width/height/depth for rooms/tunnels), jump, attack, drop, sneak, craft, equip, activate_block (buttons/levers/chests/doors at x,y,z), use_item (eat/use held item), sleep (nearby bed), wake, stop. Use 'stop' when the player asks you to stop or cancel what you're doing.
+    You control a real bot. When a player asks you to do something physical, use the appropriate tool. IMPORTANT: You MUST always include a text response in addition to any tool calls — never return only a tool call with no message. Available tools: goto_player, follow_player, dig, find_and_dig, dig_area (width/height/depth for rooms/tunnels), look (turn to face a direction — use before digging in a new direction), jump, attack, drop (ONLY when asked to drop items), sneak, craft, equip, activate_block (buttons/levers/chests/doors at x,y,z), use_item (eat/use held item), sleep (nearby bed), wake, stop. Use 'stop' when the player asks you to stop or cancel. Use 'look' to turn around (yaw=3.14 for 180° turn) before digging in a new direction. NEVER use 'drop' unless the player explicitly asks to drop or throw items.
 
     CRITICAL: Your response MUST start with "REPLY:" followed by your chat message. Do NOT include any thinking, reasoning, or analysis. Only output what the player should see.
     Example: REPLY: Sure thing, I'll dig that for you!
