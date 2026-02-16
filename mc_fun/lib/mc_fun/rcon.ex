@@ -28,7 +28,7 @@ defmodule McFun.Rcon do
   def init(opts) do
     config = Application.get_env(:mc_fun, :rcon, [])
     host = Keyword.get(opts, :host, Keyword.get(config, :host, "localhost"))
-    port = Keyword.get(opts, :port, Keyword.get(config, :port, 25575))
+    port = Keyword.get(opts, :port, Keyword.get(config, :port, 25_575))
     password = Keyword.get(opts, :password, Keyword.get(config, :password, ""))
 
     state = %{

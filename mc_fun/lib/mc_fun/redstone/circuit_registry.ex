@@ -81,9 +81,8 @@ defmodule McFun.Redstone.CircuitRegistry do
 
   defp validate_circuit(def) do
     with :ok <- validate_field(def, :origin),
-         :ok <- validate_field(def, :blocks),
-         :ok <- validate_field(def, :trigger) do
-      :ok
+         :ok <- validate_field(def, :blocks) do
+      validate_field(def, :trigger)
     end
   end
 

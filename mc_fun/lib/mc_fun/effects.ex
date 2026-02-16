@@ -138,7 +138,7 @@ defmodule McFun.Effects do
   @doc "Achievement fanfare: firework + challenge-complete sound."
   @spec achievement_fanfare(String.t()) :: :ok
   def achievement_fanfare(target) do
-    firework(target, colors: [65280, 16_776_960], shape: "star")
+    firework(target, colors: [65_280, 16_776_960], shape: "star")
     Process.sleep(200)
     sound("ui.toast.challenge_complete", target)
     :ok
@@ -149,7 +149,7 @@ defmodule McFun.Effects do
   def welcome(target) do
     title(target, "Welcome!", subtitle: "Enjoy your stay")
     Process.sleep(100)
-    firework(target, colors: [65535, 16_777_215], shape: "small_ball")
+    firework(target, colors: [65_535, 16_777_215], shape: "small_ball")
     Process.sleep(50)
     sound("block.note_block.harp", target, pitch: 1.5)
     :ok

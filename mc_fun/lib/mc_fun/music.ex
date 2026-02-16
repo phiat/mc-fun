@@ -107,23 +107,7 @@ defmodule McFun.Music do
     Enum.each(notes, fn {note, duration_key} ->
       duration = Map.get(@durations, to_string(duration_key), 1.0)
       sleep_ms = round(duration * beat_ms)
-
-      case note do
-        "R" ->
-          Process.sleep(sleep_ms)
-
-        note_str ->
-          case note_to_pitch(note_str) do
-            {:ok, pitch} ->
-              cmd = "playsound minecraft:#{sound} master #{target} ~ ~ ~ 1 #{pitch}"
-              McFun.Rcon.command(cmd)
-              Process.sleep(sleep_ms)
-
-            {:error, _} ->
-              Logger.warning("Invalid note: #{note_str}")
-              Process.sleep(sleep_ms)
-          end
-      end
+      play_note(note, sound, target, sleep_ms)
     end)
 
     :ok
@@ -133,6 +117,21 @@ defmodule McFun.Music do
   def play_inline(notes_str, opts \\ []) do
     notes = parse_song(notes_str)
     play_notes(notes, opts)
+  end
+
+  defp play_note("R", _sound, _target, sleep_ms), do: Process.sleep(sleep_ms)
+
+  defp play_note(note_str, sound, target, sleep_ms) do
+    case note_to_pitch(note_str) do
+      {:ok, pitch} ->
+        cmd = "playsound minecraft:#{sound} master #{target} ~ ~ ~ 1 #{pitch}"
+        McFun.Rcon.command(cmd)
+
+      {:error, _} ->
+        Logger.warning("Invalid note: #{note_str}")
+    end
+
+    Process.sleep(sleep_ms)
   end
 
   # Parsing

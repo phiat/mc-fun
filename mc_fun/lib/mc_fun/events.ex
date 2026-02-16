@@ -28,6 +28,8 @@ defmodule McFun.Events do
       end)
   """
 
+  alias McFun.Events.CallbackHandler
+
   require Logger
 
   @type event_type ::
@@ -90,7 +92,7 @@ defmodule McFun.Events do
           {:ok, pid()} | {:error, term()}
   def subscribe(event_type, callback)
       when (event_type in @event_types or event_type == :all) and is_function(callback, 2) do
-    McFun.Events.CallbackHandler.start_link(
+    CallbackHandler.start_link(
       event_type: event_type,
       callback: callback
     )

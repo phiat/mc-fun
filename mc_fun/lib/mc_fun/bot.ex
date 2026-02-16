@@ -126,7 +126,7 @@ defmodule McFun.Bot do
     name = Keyword.fetch!(opts, :name)
     config = Application.get_env(:mc_fun, :minecraft, [])
     host = Keyword.get(opts, :host, Keyword.get(config, :host, "localhost"))
-    port_num = Keyword.get(opts, :port, Keyword.get(config, :port, 25565))
+    port_num = Keyword.get(opts, :port, Keyword.get(config, :port, 25_565))
 
     bridge_path = Path.join(:code.priv_dir(:mc_fun), "mineflayer/bridge.js")
 

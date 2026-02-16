@@ -5,6 +5,8 @@ defmodule McFun.Application do
 
   use Application
 
+  alias McFun.Events.Handlers
+
   @impl true
   def start(_type, _args) do
     children = [
@@ -28,7 +30,7 @@ defmodule McFun.Application do
     result = Supervisor.start_link(children, opts)
 
     # Register default event handlers after supervision tree is up
-    McFun.Events.Handlers.register_all()
+    Handlers.register_all()
 
     result
   end

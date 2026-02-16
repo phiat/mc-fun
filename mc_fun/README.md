@@ -4,7 +4,7 @@ Phoenix LiveView app that controls a Minecraft server via RCON and mineflayer bo
 
 ## Features
 
-- **Dashboard** — LiveView UI with tabs for bot management, RCON console, effects, display, and events
+- **Dashboard** — LiveView UI with tabs for bot management, player status, RCON console, effects, display, and events
 - **Mineflayer bots** — Node.js bots controlled via Erlang Ports (JSON over stdin/stdout)
 - **LLM chat** — Groq-powered bot personalities with tool calling (dig, follow, craft, etc.)
 - **RCON** — Full server control: commands, effects, teleporting, whitelisting
@@ -43,7 +43,7 @@ Dashboard at http://localhost:4000/dashboard
 ## Development
 
 ```bash
-mix precommit    # compile (warnings-as-errors), format, test
+mix precommit    # compile (warnings-as-errors), format, credo --strict, test
 mix test          # run tests only
 ```
 

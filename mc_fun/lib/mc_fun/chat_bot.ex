@@ -13,6 +13,9 @@ defmodule McFun.ChatBot do
 
   Whispers always trigger a response (no prefix needed).
   """
+
+  alias McFun.LLM.Groq
+  alias McFun.LLM.ModelCache
   use GenServer
   require Logger
 
@@ -222,7 +225,7 @@ defmodule McFun.ChatBot do
   defp handle_message(state, _username, "!model " <> model_id, _mode) do
     model_id = String.trim(model_id)
 
-    available = McFun.LLM.ModelCache.model_ids()
+    available = ModelCache.model_ids()
 
     if available == [] or model_id in available do
       McFun.Bot.chat(state.bot_name, "Switched to #{model_id}")
@@ -242,7 +245,7 @@ defmodule McFun.ChatBot do
   end
 
   defp handle_message(state, _username, "!models", _mode) do
-    models = McFun.LLM.ModelCache.model_ids()
+    models = ModelCache.model_ids()
 
     if models == [] do
       McFun.Bot.chat(state.bot_name, "No models cached yet. Set GROQ_API_KEY to fetch.")
@@ -330,7 +333,7 @@ defmodule McFun.ChatBot do
         state.personality <> "\n\n" <> action_instructions(use_tools) <> survey_context
 
       result =
-        McFun.LLM.Groq.chat(system_prompt, messages,
+        Groq.chat(system_prompt, messages,
           max_tokens: max_tokens_for(model),
           model: model,
           tools: tools
@@ -469,57 +472,46 @@ defmodule McFun.ChatBot do
   end
 
   defp format_survey(s) do
-    lines = ["\n[ENVIRONMENT]"]
-
-    lines =
-      case s["position"] do
-        %{"x" => x, "y" => y, "z" => z} -> lines ++ ["Position: #{x}, #{y}, #{z}"]
-        _ -> lines
-      end
-
-    lines =
-      case s["looking_at"] do
-        nil -> lines
-        block -> lines ++ ["Looking at: #{block}"]
-      end
-
-    lines =
-      case s["blocks"] do
-        list when is_list(list) and list != [] ->
-          lines ++ ["Nearby blocks: #{Enum.join(list, ", ")}"]
-
-        _ ->
-          lines
-      end
-
-    lines =
-      case s["inventory"] do
-        list when is_list(list) and list != [] ->
-          inv = Enum.map(list, fn i -> "#{i["name"]}x#{i["count"]}" end) |> Enum.join(", ")
-          lines ++ ["Inventory: #{inv}"]
-
-        _ ->
-          lines
-      end
-
-    lines =
-      case s["entities"] do
-        list when is_list(list) and list != [] ->
-          ents = Enum.map(list, fn e -> "#{e["name"]}(#{e["distance"]}m)" end) |> Enum.join(", ")
-          lines ++ ["Nearby entities: #{ents}"]
-
-        _ ->
-          lines
-      end
-
-    lines =
-      case s["health"] do
-        nil -> lines
-        health -> lines ++ ["Health: #{trunc(health)}/20, Food: #{s["food"]}/20"]
-      end
-
-    Enum.join(lines, "\n")
+    [
+      "\n[ENVIRONMENT]",
+      format_position(s["position"]),
+      format_looking_at(s["looking_at"]),
+      format_block_list(s["blocks"]),
+      format_inventory(s["inventory"]),
+      format_entities(s["entities"]),
+      format_vitals(s["health"], s["food"])
+    ]
+    |> List.flatten()
+    |> Enum.join("\n")
   end
+
+  defp format_position(%{"x" => x, "y" => y, "z" => z}), do: "Position: #{x}, #{y}, #{z}"
+  defp format_position(_), do: []
+
+  defp format_looking_at(nil), do: []
+  defp format_looking_at(block), do: "Looking at: #{block}"
+
+  defp format_block_list(list) when is_list(list) and list != [],
+    do: "Nearby blocks: #{Enum.join(list, ", ")}"
+
+  defp format_block_list(_), do: []
+
+  defp format_inventory(list) when is_list(list) and list != [] do
+    inv = Enum.map_join(list, ", ", fn i -> "#{i["name"]}x#{i["count"]}" end)
+    "Inventory: #{inv}"
+  end
+
+  defp format_inventory(_), do: []
+
+  defp format_entities(list) when is_list(list) and list != [] do
+    ents = Enum.map_join(list, ", ", fn e -> "#{e["name"]}(#{e["distance"]}m)" end)
+    "Nearby entities: #{ents}"
+  end
+
+  defp format_entities(_), do: []
+
+  defp format_vitals(nil, _), do: []
+  defp format_vitals(health, food), do: "Health: #{trunc(health)}/20, Food: #{food}/20"
 
   # Models that support OpenAI-style tool/function calling.
   # Compound models do internal tool calling (websearch etc) and reject external tools.
@@ -531,7 +523,7 @@ defmodule McFun.ChatBot do
 
   # Reasoning models need more tokens for chain-of-thought
   defp max_tokens_for(model_id) do
-    case McFun.LLM.ModelCache.get_model(model_id) do
+    case ModelCache.get_model(model_id) do
       {:ok, %{"max_completion_tokens" => max}} -> min(max, 1024)
       _ -> 512
     end

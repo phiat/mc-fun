@@ -7,6 +7,8 @@ defmodule McFunWeb.DashboardLive do
   """
   use McFunWeb, :live_view
 
+  alias McFun.LLM.ModelCache
+
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -71,16 +73,14 @@ defmodule McFunWeb.DashboardLive do
   end
 
   def handle_event("change_bot_model", %{"bot" => bot_name, "model" => model}, socket) do
-    try do
-      McFun.ChatBot.set_model(bot_name, model)
+    McFun.ChatBot.set_model(bot_name, model)
 
-      {:noreply,
-       socket
-       |> put_flash(:info, "#{bot_name} >> #{model}")
-       |> assign(bot_statuses: build_bot_statuses())}
-    catch
-      _, _ -> {:noreply, put_flash(socket, :error, "ChatBot not active for #{bot_name}")}
-    end
+    {:noreply,
+     socket
+     |> put_flash(:info, "#{bot_name} >> #{model}")
+     |> assign(bot_statuses: build_bot_statuses())}
+  catch
+    _, _ -> {:noreply, put_flash(socket, :error, "ChatBot not active for #{bot_name}")}
   end
 
   # --- Bot Deploy ---
@@ -98,27 +98,7 @@ defmodule McFunWeb.DashboardLive do
        |> put_flash(:info, "#{name} already running — model: #{model}")
        |> assign(bot_statuses: build_bot_statuses())}
     else
-      case McFun.BotSupervisor.spawn_bot(name) do
-        {:ok, pid} ->
-          Process.monitor(pid)
-          Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{name}")
-
-          lv = self()
-
-          Task.start(fn ->
-            Process.sleep(2_000)
-            ensure_chatbot(name, model, personality)
-            send(lv, :refresh_bots)
-          end)
-
-          {:noreply,
-           socket
-           |> put_flash(:info, "Deploying #{name} [#{model}]...")
-           |> assign(bots: list_bots(), bot_statuses: build_bot_statuses(), bot_spawn_name: "")}
-
-        {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Deploy failed: #{inspect(reason)}")}
-      end
+      spawn_new_bot(socket, name, model, personality)
     end
   end
 
@@ -182,37 +162,33 @@ defmodule McFunWeb.DashboardLive do
   end
 
   def handle_event("save_personality", %{"bot" => bot, "personality" => personality}, socket) do
-    try do
-      McFun.ChatBot.set_personality(bot, personality)
+    McFun.ChatBot.set_personality(bot, personality)
 
-      {:noreply,
-       socket
-       |> put_flash(:info, "#{bot} personality updated")
-       |> assign(bot_statuses: build_bot_statuses())}
-    catch
-      _, _ -> {:noreply, put_flash(socket, :error, "ChatBot not active for #{bot}")}
-    end
+    {:noreply,
+     socket
+     |> put_flash(:info, "#{bot} personality updated")
+     |> assign(bot_statuses: build_bot_statuses())}
+  catch
+    _, _ -> {:noreply, put_flash(socket, :error, "ChatBot not active for #{bot}")}
   end
 
   def handle_event("clear_conversation", %{"bot" => bot}, socket) do
     # Send reset command through the bot's chat
-    try do
-      # Clear all conversations by iterating known players
-      info = McFun.ChatBot.info(bot)
+    # Clear all conversations by iterating known players
+    info = McFun.ChatBot.info(bot)
 
-      for _player <- info[:conversation_players] || [] do
-        McFun.ChatBot.set_personality(bot, info[:personality] || default_personality())
-      end
-
-      McFun.Bot.chat(bot, "Memory cleared!")
-
-      {:noreply,
-       socket
-       |> put_flash(:info, "#{bot} conversations cleared")
-       |> assign(bot_statuses: build_bot_statuses())}
-    catch
-      _, _ -> {:noreply, put_flash(socket, :error, "ChatBot not active for #{bot}")}
+    for _player <- info[:conversation_players] || [] do
+      McFun.ChatBot.set_personality(bot, info[:personality] || default_personality())
     end
+
+    McFun.Bot.chat(bot, "Memory cleared!")
+
+    {:noreply,
+     socket
+     |> put_flash(:info, "#{bot} conversations cleared")
+     |> assign(bot_statuses: build_bot_statuses())}
+  catch
+    _, _ -> {:noreply, put_flash(socket, :error, "ChatBot not active for #{bot}")}
   end
 
   # --- Preset Selection ---
@@ -544,6 +520,33 @@ defmodule McFunWeb.DashboardLive do
 
   # --- Helpers ---
 
+  defp spawn_new_bot(socket, name, model, personality) do
+    case McFun.BotSupervisor.spawn_bot(name) do
+      {:ok, pid} ->
+        Process.monitor(pid)
+        Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{name}")
+        schedule_chatbot_attach(name, model, personality)
+
+        {:noreply,
+         socket
+         |> put_flash(:info, "Deploying #{name} [#{model}]...")
+         |> assign(bots: list_bots(), bot_statuses: build_bot_statuses(), bot_spawn_name: "")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Deploy failed: #{inspect(reason)}")}
+    end
+  end
+
+  defp schedule_chatbot_attach(name, model, personality) do
+    lv = self()
+
+    Task.start(fn ->
+      Process.sleep(2_000)
+      ensure_chatbot(name, model, personality)
+      send(lv, :refresh_bots)
+    end)
+  end
+
   defp list_bots do
     McFun.BotSupervisor.list_bots()
   rescue
@@ -555,7 +558,7 @@ defmodule McFunWeb.DashboardLive do
   end
 
   defp safe_model_ids do
-    McFun.LLM.ModelCache.model_ids()
+    ModelCache.model_ids()
   rescue
     _ -> []
   catch
@@ -726,8 +729,7 @@ defmodule McFunWeb.DashboardLive do
     data
     |> Map.drop([:raw_line, :timestamp])
     |> Map.drop(["raw_line", "timestamp"])
-    |> Enum.map(fn {k, v} -> "#{k}=#{format_value(v)}" end)
-    |> Enum.join(" ")
+    |> Enum.map_join(" ", fn {k, v} -> "#{k}=#{format_value(v)}" end)
   end
 
   defp format_event_data(data), do: inspect(data)

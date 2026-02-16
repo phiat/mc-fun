@@ -181,44 +181,43 @@ defmodule McFun.LogWatcher do
   end
 
   defp parse_entity_data(response) do
-    health =
-      case Regex.run(~r/Health:([\d.]+)f/, response) do
-        [_, val] -> String.to_float(val)
-        nil -> nil
-      end
-
-    food =
-      case Regex.run(~r/foodLevel:(\d+)/, response) do
-        [_, val] -> String.to_integer(val)
-        nil -> nil
-      end
-
-    position =
-      case Regex.run(~r/Pos:\[([-\d.]+)d,([-\d.]+)d,([-\d.]+)d\]/, response) do
-        [_, x, y, z] ->
-          {String.to_float(x), String.to_float(y), String.to_float(z)}
-
-        nil ->
-          # Try without 'd' suffix (some versions)
-          case Regex.run(~r/Pos:\s*\[([-\d.]+)d?,\s*([-\d.]+)d?,\s*([-\d.]+)d?\]/, response) do
-            [_, x, y, z] ->
-              {parse_float(x), parse_float(y), parse_float(z)}
-
-            nil ->
-              nil
-          end
-      end
-
-    dimension =
-      case Regex.run(~r/Dimension:"minecraft:(\w+)"/, response) do
-        [_, dim] -> dim
-        nil -> nil
-      end
-
-    %{health: health, food: food, position: position, dimension: dimension}
+    %{
+      health: parse_nbt_float(response, ~r/Health:([\d.]+)f/),
+      food: parse_nbt_int(response, ~r/foodLevel:(\d+)/),
+      position: parse_nbt_position(response),
+      dimension: parse_nbt_match(response, ~r/Dimension:"minecraft:(\w+)"/)
+    }
   end
 
-  defp parse_float(str) do
+  defp parse_nbt_float(response, regex) do
+    case Regex.run(regex, response) do
+      [_, val] -> String.to_float(val)
+      nil -> nil
+    end
+  end
+
+  defp parse_nbt_int(response, regex) do
+    case Regex.run(regex, response) do
+      [_, val] -> String.to_integer(val)
+      nil -> nil
+    end
+  end
+
+  defp parse_nbt_match(response, regex) do
+    case Regex.run(regex, response) do
+      [_, val] -> val
+      nil -> nil
+    end
+  end
+
+  defp parse_nbt_position(response) do
+    case Regex.run(~r/Pos:\s*\[([-\d.]+)d?,\s*([-\d.]+)d?,\s*([-\d.]+)d?\]/, response) do
+      [_, x, y, z] -> {safe_float(x), safe_float(y), safe_float(z)}
+      nil -> nil
+    end
+  end
+
+  defp safe_float(str) do
     case Float.parse(str) do
       {f, _} -> f
       :error -> 0.0

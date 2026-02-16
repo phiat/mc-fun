@@ -10,7 +10,7 @@ The MC server runs remotely on **miniwini-1** (Incus/LXC container named `minecr
 ```bash
 cd mc_fun/
 mix phx.server        # starts on http://localhost:4000
-mix precommit         # compile --warnings-as-errors, format, test
+mix precommit         # compile --warnings-as-errors, format, credo --strict, test
 ```
 
 Dashboard at `/dashboard`. Home page at `/`.
@@ -45,7 +45,7 @@ mc_fun/
 │       └── model_cache.ex       # ETS + disk cache of available Groq models
 ├── lib/mc_fun_web/
 │   ├── router.ex                # / (home), /dashboard (LiveView), /api/webhooks/:action
-│   ├── live/dashboard_live.ex   # Main UI — tabs: UNITS, RCON, FX, DISPLAY, EVENTS
+│   ├── live/dashboard_live.ex   # Main UI — tabs: UNITS, PLAYERS, RCON, FX, DISPLAY, EVENTS
 │   ├── controllers/
 │   │   ├── page_controller.ex
 │   │   ├── webhook_controller.ex
@@ -129,4 +129,4 @@ incus exec minecraft -- <cmd>           # run command in MC container
 - RCON GenServer crashes the app if auth fails — this is intentional (fail fast)
 - `BotSupervisor.list_bots/0` filters registry to binary-only keys to exclude tuples like `{:chat_bot, name}`
 - Default LLM model: `openai/gpt-oss-20b` (via Groq)
-- `mix precommit` runs compile (warnings-as-errors), deps.unlock --unused, format, test
+- `mix precommit` runs compile (warnings-as-errors), deps.unlock --unused, format, credo --strict, test

@@ -428,37 +428,38 @@ defmodule McFun.Display.BlockFont do
       bitmap = get_char_bitmap(char)
       char_offset = char_index * (@char_width + spacing)
 
-      bitmap
+      render_bitmap(bitmap, origin, char_offset, direction, material)
+    end)
+  end
+
+  defp render_bitmap(bitmap, origin, char_offset, direction, material) do
+    bitmap
+    |> Enum.with_index()
+    |> Enum.flat_map(fn {row, row_index} ->
+      row
       |> Enum.with_index()
-      |> Enum.flat_map(fn {row, row_index} ->
-        row
-        |> Enum.with_index()
-        |> Enum.filter(fn {val, _} -> val == 1 end)
-        |> Enum.map(fn {_, col_index} ->
-          # Y goes down from origin (row 0 = top)
-          y_offset = -row_index
-          h_offset = char_offset + col_index
-
-          pos =
-            case direction do
-              :east ->
-                %{
-                  x: Map.get(origin, :x, 0) + h_offset,
-                  y: Map.get(origin, :y, 0) + y_offset,
-                  z: Map.get(origin, :z, 0)
-                }
-
-              :north ->
-                %{
-                  x: Map.get(origin, :x, 0),
-                  y: Map.get(origin, :y, 0) + y_offset,
-                  z: Map.get(origin, :z, 0) - h_offset
-                }
-            end
-
-          %{pos: pos, block: material}
-        end)
+      |> Enum.filter(fn {val, _} -> val == 1 end)
+      |> Enum.map(fn {_, col_index} ->
+        h_offset = char_offset + col_index
+        pos = block_position(origin, -row_index, h_offset, direction)
+        %{pos: pos, block: material}
       end)
     end)
+  end
+
+  defp block_position(origin, y_offset, h_offset, :east) do
+    %{
+      x: Map.get(origin, :x, 0) + h_offset,
+      y: Map.get(origin, :y, 0) + y_offset,
+      z: Map.get(origin, :z, 0)
+    }
+  end
+
+  defp block_position(origin, y_offset, h_offset, :north) do
+    %{
+      x: Map.get(origin, :x, 0),
+      y: Map.get(origin, :y, 0) + y_offset,
+      z: Map.get(origin, :z, 0) - h_offset
+    }
   end
 end
