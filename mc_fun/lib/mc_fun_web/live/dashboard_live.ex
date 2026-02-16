@@ -69,7 +69,10 @@ defmodule McFunWeb.DashboardLive do
 
     if name in socket.assigns.bots do
       ensure_chatbot(name, model, personality)
-      {:noreply, put_flash(socket, :info, "McFunBot already running, ChatBot attached")}
+      {:noreply,
+       socket
+       |> put_flash(:info, "McFunBot already running, model: #{model}")
+       |> assign(bot_statuses: build_bot_statuses())}
     else
       case McFun.BotSupervisor.spawn_bot(name) do
         {:ok, pid} ->
