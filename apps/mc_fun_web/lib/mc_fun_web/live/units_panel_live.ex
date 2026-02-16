@@ -183,8 +183,14 @@ defmodule McFunWeb.UnitsPanelLive do
   def handle_event("whitelist_and_deploy", %{"name" => name}, socket) do
     Task.start(fn ->
       parent = socket.assigns.parent_pid
-      result = McFun.Rcon.command("whitelist add #{name}")
-      send(parent, {:flash, :info, "Whitelist: #{result}"})
+
+      msg =
+        case McFun.Rcon.command("whitelist add #{name}") do
+          {:ok, reply} -> reply
+          {:error, reason} -> "Failed: #{inspect(reason)}"
+        end
+
+      send(parent, {:flash, :info, "Whitelist: #{msg}"})
       send(parent, {:clear_failed, name})
     end)
 

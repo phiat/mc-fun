@@ -223,9 +223,13 @@ defmodule McFunWeb.BotConfigModalLive do
                   id={"patrol-waypoints-#{@bot}"}
                   type="text"
                   name="waypoints"
+                  value={patrol_default(@status)}
                   placeholder="[[0,64,0],[10,64,10],[20,64,0]]"
                   class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-1.5 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
                 />
+                <div class="text-[9px] text-[#555] mt-0.5">
+                  JSON array of [x,y,z] waypoints (min 2)
+                </div>
                 <button
                   type="submit"
                   class="mt-1 px-4 py-1 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10"
@@ -594,22 +598,30 @@ defmodule McFunWeb.BotConfigModalLive do
 
   # --- Behavior Controls ---
 
-  def handle_event("start_behavior_patrol", %{"bot" => bot, "waypoints" => wp_json}, socket) do
-    case Jason.decode(wp_json) do
-      {:ok, waypoints} when is_list(waypoints) ->
-        tuples = Enum.map(waypoints, fn [x, y, z] -> {x, y, z} end)
-        McFun.BotBehaviors.start_patrol(bot, tuples)
+  def handle_event("start_behavior_patrol", %{"bot" => _bot, "waypoints" => ""}, socket) do
+    notify_parent(socket, {:flash, :error, "Enter waypoints: [[x,y,z], [x,y,z], ...]"})
+    {:noreply, socket}
+  end
 
+  def handle_event("start_behavior_patrol", %{"bot" => bot, "waypoints" => wp_json}, socket) do
+    with {:ok, waypoints} when is_list(waypoints) <- Jason.decode(wp_json),
+         tuples when length(tuples) >= 2 <- parse_waypoints(waypoints) do
+      McFun.BotBehaviors.start_patrol(bot, tuples)
+
+      notify_parent(
+        socket,
+        {:flash, :info, "#{bot} patrol started (#{length(tuples)} waypoints)"}
+      )
+
+      notify_parent(socket, :refresh_bot_statuses)
+      {:noreply, socket}
+    else
+      _ ->
         notify_parent(
           socket,
-          {:flash, :info, "#{bot} patrol started (#{length(tuples)} waypoints)"}
+          {:flash, :error, "Need 2+ waypoints as JSON: [[x,y,z], [x,y,z], ...]"}
         )
 
-        notify_parent(socket, :refresh_bot_statuses)
-        {:noreply, socket}
-
-      _ ->
-        notify_parent(socket, {:flash, :error, "Invalid waypoints JSON. Use [[x,y,z], ...]"})
         {:noreply, socket}
     end
   end
@@ -698,6 +710,20 @@ defmodule McFunWeb.BotConfigModalLive do
     Application.get_env(:mc_fun, :chat_bot)[:default_personality]
   end
 
+  defp parse_waypoints(list) do
+    Enum.reduce_while(list, [], fn
+      [x, y, z], acc when is_number(x) and is_number(y) and is_number(z) ->
+        {:cont, [{x, y, z} | acc]}
+
+      _, _acc ->
+        {:halt, :error}
+    end)
+    |> case do
+      :error -> :error
+      tuples -> Enum.reverse(tuples)
+    end
+  end
+
   defp safe_int(val) when is_integer(val), do: val
 
   defp safe_int(val) when is_binary(val) do
@@ -715,6 +741,15 @@ defmodule McFunWeb.BotConfigModalLive do
   defp format_behavior(%{behavior: :guard}), do: "GUARD"
   defp format_behavior(%{behavior: :mine, params: %{block_type: b}}), do: "MINE #{b}"
   defp format_behavior(_), do: "ACTIVE"
+
+  defp patrol_default(%{position: {x, y, z}}) when is_number(x) do
+    x = trunc(x)
+    y = trunc(y)
+    z = trunc(z)
+    Jason.encode!([[x + 10, y, z], [x + 10, y, z + 10], [x, y, z + 10], [x, y, z]])
+  end
+
+  defp patrol_default(_), do: ""
 
   defp guard_default(%{position: {x, _y, _z}}, :x, _fallback) when is_number(x),
     do: to_string(trunc(x))
