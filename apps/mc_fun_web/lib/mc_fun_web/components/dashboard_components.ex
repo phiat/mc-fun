@@ -174,6 +174,16 @@ defmodule McFunWeb.DashboardComponents do
               <span>BEHAVIOR</span>
               <span class="text-[#aa66ff]">{format_behavior(@status.behavior)}</span>
             </div>
+            <%= if @status[:cost] && @status.cost.calls > 0 do %>
+              <div class="flex justify-between">
+                <span>COST</span>
+                <span class="text-[#ffcc00]">
+                  {McFun.CostTracker.format_cost(@status.cost.cost)} | {McFun.CostTracker.format_tokens(
+                    @status.cost.total_tokens
+                  )} tok
+                </span>
+              </div>
+            <% end %>
             <%!-- Bot vitals --%>
             <%= if @status.health do %>
               <div class="flex items-center justify-between">

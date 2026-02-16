@@ -275,7 +275,8 @@ defmodule McFun.ChatBot do
         result =
           Groq.chat(system_prompt, [],
             max_tokens: chat_bot_config(:heartbeat_max_tokens),
-            model: model
+            model: model,
+            bot_name: bot_name
           )
 
         send(pid, {:heartbeat_response, result})
@@ -464,7 +465,8 @@ defmodule McFun.ChatBot do
         Groq.chat(system_prompt, messages,
           max_tokens: max_tokens_for(model),
           model: model,
-          tools: tools
+          tools: tools,
+          bot_name: bot_name
         )
 
       Logger.info("ChatBot Groq result: #{inspect(result, limit: 200)}")
@@ -584,7 +586,11 @@ defmodule McFun.ChatBot do
 
     followup_tokens = chat_bot_config(:followup_max_tokens)
 
-    case Groq.chat(system_prompt, [], max_tokens: followup_tokens, model: model) do
+    case Groq.chat(system_prompt, [],
+           max_tokens: followup_tokens,
+           model: model,
+           bot_name: bot_name
+         ) do
       {:ok, text} ->
         reply = strip_thinking(text)
         if reply != "", do: reply, else: "On it!"

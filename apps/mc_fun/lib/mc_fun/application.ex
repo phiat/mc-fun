@@ -12,6 +12,7 @@ defmodule McFun.Application do
       McFun.Rcon.Supervisor,
       McFun.Redstone.CircuitRegistry,
       McFun.LLM.ModelCache,
+      McFun.CostTracker,
       McFun.EventStore,
       McFun.LogWatcher,
       {Registry, keys: :unique, name: McFun.BotRegistry},

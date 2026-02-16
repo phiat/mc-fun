@@ -21,6 +21,7 @@ defmodule McFunWeb.DashboardLive do
       end
 
       Phoenix.PubSub.subscribe(McFun.PubSub, "player_statuses")
+      Phoenix.PubSub.subscribe(McFun.PubSub, "costs")
       :timer.send_interval(3_000, self(), :refresh_status)
     end
 
@@ -44,6 +45,8 @@ defmodule McFunWeb.DashboardLive do
         rcon_status: check_rcon(),
         active_tab: "bots",
         sidebar_open: true,
+        cost_summary: McFun.CostTracker.get_global_cost(),
+        server_health: server_health(),
         # Bot config modal
         selected_bot: nil,
         modal_tab: "llm"
@@ -172,6 +175,7 @@ defmodule McFunWeb.DashboardLive do
        bots: current_bots,
        bot_statuses: build_bot_statuses(),
        rcon_status: check_rcon(),
+       server_health: server_health(),
        available_models: if(models != [], do: models, else: socket.assigns.available_models)
      )}
   end
@@ -231,6 +235,17 @@ defmodule McFunWeb.DashboardLive do
      socket
      |> put_flash(:error, "Unit crashed: #{inspect(reason)}")
      |> assign(bots: list_bots(), bot_statuses: build_bot_statuses())}
+  end
+
+  @impl true
+  def handle_info({:cost_updated, summary}, socket) do
+    {:noreply, assign(socket, cost_summary: summary)}
+  end
+
+  @impl true
+  def handle_info({:cost_event, _bot_name, _metrics}, socket) do
+    # Handled by CostTracker GenServer; ignore in LiveView
+    {:noreply, socket}
   end
 
   @impl true
@@ -332,7 +347,8 @@ defmodule McFunWeb.DashboardLive do
          health: bot_status[:health],
          food: bot_status[:food],
          dimension: bot_status[:dimension],
-         inventory: bot_status[:inventory] || []
+         inventory: bot_status[:inventory] || [],
+         cost: McFun.CostTracker.get_bot_cost(bot)
        }}
     end
   end
@@ -361,6 +377,16 @@ defmodule McFunWeb.DashboardLive do
     _ -> nil
   catch
     _, _ -> nil
+  end
+
+  defp server_health do
+    rcon_up = Process.whereis(McFun.Rcon.Supervisor) != nil
+
+    cond do
+      not rcon_up -> :error
+      :erlang.memory(:total) > 500 * 1_024 * 1_024 -> :degraded
+      true -> :healthy
+    end
   end
 
   defp stop_chatbot(name) do

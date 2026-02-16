@@ -23,6 +23,33 @@
           PLAYERS: <span class="text-[#00ff88]">{Enum.join(@online_players, ", ")}</span>
         </span>
         <span>UNITS: <span class="text-[#00ffff]">{length(@bots)}</span></span>
+        <span>
+          COST:
+          <span class="text-[#ffcc00]">{McFun.CostTracker.format_cost(@cost_summary.cost)}</span>
+          <span class="text-[#666]">
+            ({McFun.CostTracker.format_tokens(@cost_summary.total_tokens)} tok)
+          </span>
+        </span>
+        <span class="flex items-center gap-1">
+          SERVER:
+          <span class={[
+            "w-1.5 h-1.5 inline-block",
+            @server_health == :healthy && "bg-[#00ff88] shadow-[0_0_4px_#00ff88]",
+            @server_health == :degraded && "bg-[#ffaa00] shadow-[0_0_4px_#ffaa00]",
+            @server_health == :error && "bg-[#ff4444] shadow-[0_0_4px_#ff4444]"
+          ]} />
+          <span class={[
+            @server_health == :healthy && "text-[#00ff88]",
+            @server_health == :degraded && "text-[#ffaa00]",
+            @server_health == :error && "text-[#ff4444]"
+          ]}>
+            {case @server_health do
+              :healthy -> "HEALTHY"
+              :degraded -> "DEGRADED"
+              :error -> "ERROR"
+            end}
+          </span>
+        </span>
       </div>
     </div>
   </header>

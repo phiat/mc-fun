@@ -41,7 +41,20 @@ defmodule McFun.LLM.Groq do
            headers: [{"authorization", "Bearer #{api_key}"}],
            receive_timeout: 30_000
          ) do
-      {:ok, %{status: 200, body: %{"choices" => [%{"message" => message} | _]}}} ->
+      {:ok, %{status: 200, body: %{"choices" => [%{"message" => message} | _]} = resp_body}} ->
+        if bot_name = Keyword.get(opts, :bot_name) do
+          usage = Map.get(resp_body, "usage", %{})
+
+          metrics = %{
+            model: model,
+            prompt_tokens: Map.get(usage, "prompt_tokens", 0),
+            completion_tokens: Map.get(usage, "completion_tokens", 0),
+            total_tokens: Map.get(usage, "total_tokens", 0)
+          }
+
+          Phoenix.PubSub.broadcast(McFun.PubSub, "costs", {:cost_event, bot_name, metrics})
+        end
+
         parse_response(message)
 
       {:ok, %{status: 429}} ->
