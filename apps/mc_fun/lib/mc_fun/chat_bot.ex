@@ -666,6 +666,34 @@ defmodule McFun.ChatBot do
         ["item"]
       ),
       tool(
+        "activate_block",
+        "Interact with a block at coordinates (press button, flip lever, open chest/door)",
+        %{
+          "x" => %{"type" => "integer", "description" => "X coordinate"},
+          "y" => %{"type" => "integer", "description" => "Y coordinate"},
+          "z" => %{"type" => "integer", "description" => "Z coordinate"}
+        },
+        ["x", "y", "z"]
+      ),
+      tool(
+        "use_item",
+        "Use the currently held item (eat food, throw, use)",
+        %{},
+        []
+      ),
+      tool(
+        "sleep",
+        "Sleep in a nearby bed (must be within 4 blocks and nighttime)",
+        %{},
+        []
+      ),
+      tool(
+        "wake",
+        "Wake up from a bed",
+        %{},
+        []
+      ),
+      tool(
         "stop",
         "Stop the current action (digging, moving, following). Use when asked to stop or cancel.",
         %{},
@@ -741,6 +769,22 @@ defmodule McFun.ChatBot do
     McFun.Bot.equip(bot, item)
   end
 
+  defp execute_tool(bot, "activate_block", %{"x" => x, "y" => y, "z" => z}, _username) do
+    McFun.Bot.activate_block(bot, x, y, z)
+  end
+
+  defp execute_tool(bot, "use_item", _args, _username) do
+    McFun.Bot.use_item(bot)
+  end
+
+  defp execute_tool(bot, "sleep", _args, _username) do
+    McFun.Bot.sleep(bot)
+  end
+
+  defp execute_tool(bot, "wake", _args, _username) do
+    McFun.Bot.wake(bot)
+  end
+
   defp execute_tool(bot, "stop", _args, _username) do
     McFun.Bot.stop_action(bot)
   end
@@ -751,7 +795,7 @@ defmodule McFun.ChatBot do
 
   defp action_instructions(true = _use_tools) do
     """
-    You control a real bot. When a player asks you to do something physical, use the appropriate tool. IMPORTANT: You MUST always include a text response in addition to any tool calls — never return only a tool call with no message. Available tools: goto_player, follow_player, dig, find_and_dig, dig_area (width/height/depth for rooms/tunnels), jump, attack, drop, sneak, craft, equip, stop. Use 'stop' when the player asks you to stop or cancel what you're doing.
+    You control a real bot. When a player asks you to do something physical, use the appropriate tool. IMPORTANT: You MUST always include a text response in addition to any tool calls — never return only a tool call with no message. Available tools: goto_player, follow_player, dig, find_and_dig, dig_area (width/height/depth for rooms/tunnels), jump, attack, drop, sneak, craft, equip, activate_block (buttons/levers/chests/doors at x,y,z), use_item (eat/use held item), sleep (nearby bed), wake, stop. Use 'stop' when the player asks you to stop or cancel what you're doing.
 
     CRITICAL: Your response MUST start with "REPLY:" followed by your chat message. Do NOT include any thinking, reasoning, or analysis. Only output what the player should see.
     Example: REPLY: Sure thing, I'll dig that for you!
