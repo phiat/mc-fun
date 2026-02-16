@@ -530,6 +530,35 @@
           {String.upcase(effect)}
         </button>
       </div>
+
+      <%!-- Custom message --%>
+      <form phx-submit="fire_title" class="mt-4 flex items-end gap-2">
+        <div class="flex-1">
+          <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">TITLE</label>
+          <input
+            type="text"
+            name="title"
+            placeholder="big text..."
+            class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1.5 text-xs focus:border-[#aa66ff] focus:outline-none placeholder:text-[#444]"
+          />
+        </div>
+        <div class="flex-1">
+          <label class="text-[9px] tracking-widest text-[#555] block mb-0.5">SUBTITLE</label>
+          <input
+            type="text"
+            name="subtitle"
+            placeholder="smaller text..."
+            class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1.5 text-xs focus:border-[#aa66ff] focus:outline-none placeholder:text-[#444]"
+          />
+        </div>
+        <button
+          type="submit"
+          phx-disable-with="..."
+          class="px-4 py-1.5 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10 hover:border-[#aa66ff] transition-all shrink-0"
+        >
+          SEND
+        </button>
+      </form>
     </div>
 
     <%!-- ==================== DISPLAY TAB ==================== --%>

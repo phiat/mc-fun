@@ -397,6 +397,18 @@ defmodule McFunWeb.DashboardLive do
     {:noreply, assign(socket, effect_target: target)}
   end
 
+  def handle_event("fire_title", %{"title" => title} = params, socket) when title != "" do
+    target = socket.assigns.effect_target
+    subtitle = params["subtitle"]
+    opts = if subtitle && subtitle != "", do: [subtitle: subtitle], else: []
+
+    Task.start(fn -> McFun.Effects.title(target, title, opts) end)
+
+    {:noreply, put_flash(socket, :info, "Title >> #{target}: #{title}")}
+  end
+
+  def handle_event("fire_title", _, socket), do: {:noreply, socket}
+
   # --- Coord Sharing ---
 
   def handle_event("use_coords", %{"x" => x, "y" => y, "z" => z, "name" => name}, socket) do
