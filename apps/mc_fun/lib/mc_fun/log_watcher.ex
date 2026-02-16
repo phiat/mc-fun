@@ -183,12 +183,14 @@ defmodule McFun.LogWatcher do
 
       %{state | player_data: %{}}
     else
-      # Fetch player data in parallel across the poll pool
+      # Fetch player data in parallel, capped to avoid RCON pool starvation
+      concurrency = min(length(player_list), McFun.Rcon.pool_size())
+
       new_data =
         player_list
         |> Task.async_stream(
           fn player -> {player, fetch_single_player_data(player)} end,
-          max_concurrency: McFun.Rcon.pool_size(),
+          max_concurrency: concurrency,
           timeout: 10_000,
           on_timeout: :kill_task
         )

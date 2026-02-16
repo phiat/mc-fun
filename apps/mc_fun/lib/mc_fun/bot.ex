@@ -15,7 +15,8 @@ defmodule McFun.Bot do
     :food,
     :dimension,
     :current_action,
-    inventory: []
+    inventory: [],
+    timers: []
   ]
 
   # Client API
@@ -222,10 +223,10 @@ defmodule McFun.Bot do
     Logger.info("Bot #{name} starting, bridge port opened")
 
     # Poll position every 3 seconds, inventory every 5 seconds (port commands, no RCON cost)
-    :timer.send_interval(3_000, self(), :poll_position)
-    :timer.send_interval(5_000, self(), :poll_inventory)
+    {:ok, pos_timer} = :timer.send_interval(3_000, self(), :poll_position)
+    {:ok, inv_timer} = :timer.send_interval(5_000, self(), :poll_inventory)
 
-    {:ok, %__MODULE__{name: name, port: port, listeners: []}}
+    {:ok, %__MODULE__{name: name, port: port, listeners: [], timers: [pos_timer, inv_timer]}}
   end
 
   @impl true
@@ -345,6 +346,7 @@ defmodule McFun.Bot do
 
   @impl true
   def terminate(_reason, state) do
+    for timer <- state.timers, do: :timer.cancel(timer)
     if state.port && Port.info(state.port), do: Port.close(state.port)
     :ok
   end

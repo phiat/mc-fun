@@ -32,6 +32,8 @@ defmodule McFun.MixProject do
       {:jason, "~> 1.2"},
       {:req, "~> 0.5"},
       {:dotenvy, "~> 0.9"},
+      {:sentry, "~> 10.2.0"},
+      {:hackney, "~> 1.8"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end

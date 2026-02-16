@@ -13,10 +13,12 @@ defmodule McFunWeb.DashboardLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    initial_bots = list_bots()
+
     if connected?(socket) do
       McFun.Events.subscribe(:all)
 
-      for bot <- list_bots() do
+      for bot <- initial_bots do
         Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{bot}")
       end
 
@@ -45,6 +47,7 @@ defmodule McFunWeb.DashboardLive do
         rcon_status: check_rcon(),
         active_tab: "bots",
         sidebar_open: true,
+        subscribed_bots: MapSet.new(initial_bots),
         cost_summary: McFun.CostTracker.get_global_cost(),
         server_health: server_health(),
         # Bot config modal
@@ -164,15 +167,23 @@ defmodule McFunWeb.DashboardLive do
 
     models = safe_model_ids()
     current_bots = list_bots()
-    known = socket.assigns.bots
+    current_set = MapSet.new(current_bots)
+    subscribed = socket.assigns.subscribed_bots
 
-    for bot <- current_bots, bot not in known do
+    # Subscribe to new bots
+    for bot <- MapSet.difference(current_set, subscribed) do
       Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{bot}")
+    end
+
+    # Unsubscribe from dead bots
+    for bot <- MapSet.difference(subscribed, current_set) do
+      Phoenix.PubSub.unsubscribe(McFun.PubSub, "bot:#{bot}")
     end
 
     {:noreply,
      assign(socket,
        bots: current_bots,
+       subscribed_bots: current_set,
        bot_statuses: build_bot_statuses(),
        rcon_status: check_rcon(),
        server_health: server_health(),
