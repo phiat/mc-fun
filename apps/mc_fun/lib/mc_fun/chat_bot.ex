@@ -27,13 +27,32 @@ defmodule McFun.ChatBot do
   @max_chat_lines 4
   @fallback_model "openai/gpt-oss-20b"
 
+  # Heartbeat intervals
+  @heartbeat_behavior_ms 15_000
+  @heartbeat_idle_ms 120_000
+  @heartbeat_cooldown_ms 10_000
+  @heartbeat_initial_delay_ms 5_000
+
+  @heartbeat_prompts [
+    "What are you doing right now? Give a quick update.",
+    "What's something interesting you notice around you?",
+    "What's on your mind right now?",
+    "Share a random fun fact related to what you see.",
+    "Freestyle a quick 2-line rap about your situation.",
+    "What would you suggest doing next around here?",
+    "Rate your current mood on a scale and explain why.",
+    "Describe your surroundings like a nature documentary narrator."
+  ]
+
   defstruct [
     :bot_name,
     :personality,
     :model,
     conversations: %{},
     last_active: %{},
-    last_response: nil
+    last_response: nil,
+    heartbeat_ref: nil,
+    last_heartbeat: nil
   ]
 
   # Client API
@@ -72,11 +91,14 @@ defmodule McFun.ChatBot do
 
     Logger.info("ChatBot #{bot_name} started — model: #{model}")
 
+    ref = Process.send_after(self(), :heartbeat, @heartbeat_initial_delay_ms)
+
     {:ok,
      %__MODULE__{
        bot_name: bot_name,
        personality: personality,
-       model: model
+       model: model,
+       heartbeat_ref: ref
      }}
   end
 
@@ -146,19 +168,26 @@ defmodule McFun.ChatBot do
     # Send chat and execute tools asynchronously to avoid blocking ChatBot
     bot_name = state.bot_name
 
+    model = state.model
+    personality = state.personality
+
     Task.start(fn ->
       # Always send a chat reply — if the LLM returned only tool calls with no text,
-      # generate a brief acknowledgement so the player isn't left in silence
+      # make a follow-up LLM call for a witty acknowledgement
       chat_reply =
         if reply != "" do
           reply
         else
           tool_names = Enum.map_join(tool_calls, ", ", & &1.name)
-          Logger.info("ChatBot #{bot_name}: empty text with tools [#{tool_names}], auto-acking")
-          nil
+
+          Logger.info(
+            "ChatBot #{bot_name}: empty text with tools [#{tool_names}], fetching follow-up chat"
+          )
+
+          fetch_followup_chat(bot_name, personality, model, tool_names, username)
         end
 
-      if chat_reply, do: send_paginated(bot_name, chat_reply)
+      send_paginated(bot_name, chat_reply)
 
       for %{name: name, args: args} <- tool_calls do
         Logger.info("ChatBot #{bot_name}: tool call #{name}(#{inspect(args)})")
@@ -217,6 +246,84 @@ defmodule McFun.ChatBot do
     broadcast_llm_event(state.bot_name, nil, "LLM error: #{inspect(reason)}", nil)
     McFun.Bot.chat(state.bot_name, "Sorry, LLM error — try again!")
     {:noreply, state}
+  end
+
+  # Heartbeat — periodic ambient chat
+  @impl true
+  def handle_info(:heartbeat, state) do
+    now = System.monotonic_time(:millisecond)
+
+    # Skip if recent player conversation (within cooldown)
+    if state.last_response && now - state.last_response < @heartbeat_cooldown_ms do
+      Logger.debug("ChatBot #{state.bot_name}: heartbeat skipped (recent conversation)")
+      {:noreply, schedule_heartbeat(state)}
+    else
+      prompt = Enum.random(@heartbeat_prompts)
+      bot_name = state.bot_name
+      personality = state.personality
+      model = state.model
+      pid = self()
+
+      Task.start(fn ->
+        survey_context = fetch_survey(bot_name)
+        bot_status = format_bot_status(bot_name)
+
+        system_prompt =
+          personality <>
+            "\n\nYou are thinking out loud in Minecraft chat. " <>
+            "Keep it to 1-2 sentences. No markdown. Be fun and in-character.\n" <>
+            survey_context <>
+            bot_status <>
+            "\n\nPrompt: #{prompt}"
+
+        result =
+          Groq.chat(system_prompt, [],
+            max_tokens: 128,
+            model: model
+          )
+
+        send(pid, {:heartbeat_response, result})
+      end)
+
+      {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_info({:heartbeat_response, {:ok, text}}, state) do
+    reply = strip_thinking(text)
+
+    if reply != "" do
+      bot_name = state.bot_name
+      Task.start(fn -> send_paginated(bot_name, reply) end)
+
+      broadcast_llm_event(state.bot_name, nil, text, "heartbeat")
+    end
+
+    now = System.monotonic_time(:millisecond)
+    {:noreply, schedule_heartbeat(%{state | last_heartbeat: now})}
+  end
+
+  @impl true
+  def handle_info({:heartbeat_response, {:ok, text, _tool_calls}}, state) do
+    # Heartbeat shouldn't use tools, but handle gracefully
+    reply = strip_thinking(text)
+
+    if reply != "" do
+      bot_name = state.bot_name
+      Task.start(fn -> send_paginated(bot_name, reply) end)
+
+      broadcast_llm_event(state.bot_name, nil, text, "heartbeat")
+    end
+
+    now = System.monotonic_time(:millisecond)
+    {:noreply, schedule_heartbeat(%{state | last_heartbeat: now})}
+  end
+
+  @impl true
+  def handle_info({:heartbeat_response, {:error, reason}}, state) do
+    Logger.warning("ChatBot #{state.bot_name}: heartbeat LLM error: #{inspect(reason)}")
+    {:noreply, schedule_heartbeat(state)}
   end
 
   @impl true
@@ -470,6 +577,42 @@ defmodule McFun.ChatBot do
         chunk_words([word | rest], max, "", [current | acc])
       end
     end
+  end
+
+  defp fetch_followup_chat(bot_name, personality, model, tool_names, username) do
+    system_prompt =
+      personality <>
+        "\n\nYou just decided to use these actions: [#{tool_names}] in response to #{username}. " <>
+        "Say something fun/witty to the player about what you're doing. " <>
+        "1-2 sentences, no markdown."
+
+    case Groq.chat(system_prompt, [], max_tokens: 128, model: model) do
+      {:ok, text} ->
+        reply = strip_thinking(text)
+        if reply != "", do: reply, else: "On it!"
+
+      {:ok, text, _tools} ->
+        reply = strip_thinking(text)
+        if reply != "", do: reply, else: "On it!"
+
+      {:error, reason} ->
+        Logger.warning("ChatBot #{bot_name}: follow-up chat failed: #{inspect(reason)}")
+        "On it!"
+    end
+  end
+
+  defp schedule_heartbeat(state) do
+    # Cancel existing timer
+    if state.heartbeat_ref, do: Process.cancel_timer(state.heartbeat_ref)
+
+    interval =
+      case McFun.BotBehaviors.info(state.bot_name) do
+        %{behavior: _} -> @heartbeat_behavior_ms
+        _ -> @heartbeat_idle_ms
+      end
+
+    ref = Process.send_after(self(), :heartbeat, interval)
+    %{state | heartbeat_ref: ref}
   end
 
   defp default_model do
