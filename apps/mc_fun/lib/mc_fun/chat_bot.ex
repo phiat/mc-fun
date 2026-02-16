@@ -48,7 +48,9 @@ defmodule McFun.ChatBot do
     last_active: %{},
     last_response: nil,
     heartbeat_ref: nil,
-    last_heartbeat: nil
+    last_heartbeat: nil,
+    heartbeat_enabled: true,
+    last_message: nil
   ]
 
   # Client API
@@ -71,6 +73,11 @@ defmodule McFun.ChatBot do
   @doc "Get current state info."
   def info(bot_name) do
     GenServer.call(via(bot_name), :info)
+  end
+
+  @doc "Enable or disable heartbeat (ambient chat) for a bot."
+  def toggle_heartbeat(bot_name, enabled?) do
+    GenServer.call(via(bot_name), {:toggle_heartbeat, enabled?})
   end
 
   defp via(bot_name), do: {:via, Registry, {McFun.BotRegistry, {:chat_bot, bot_name}}}
@@ -119,8 +126,29 @@ defmodule McFun.ChatBot do
        model: state.model,
        personality: state.personality,
        conversations: state.conversations,
-       conversation_players: Map.keys(state.conversations)
+       conversation_players: Map.keys(state.conversations),
+       heartbeat_enabled: state.heartbeat_enabled,
+       last_message: state.last_message
      }, state}
+  end
+
+  @impl true
+  def handle_call({:toggle_heartbeat, enabled?}, _from, state) do
+    Logger.info(
+      "ChatBot #{state.bot_name} heartbeat #{if enabled?, do: "enabled", else: "disabled"}"
+    )
+
+    state = %{state | heartbeat_enabled: enabled?}
+
+    state =
+      if enabled? do
+        schedule_heartbeat(state)
+      else
+        if state.heartbeat_ref, do: Process.cancel_timer(state.heartbeat_ref)
+        %{state | heartbeat_ref: nil}
+      end
+
+    {:reply, :ok, state}
   end
 
   # Chat events — only respond to !commands
@@ -197,7 +225,7 @@ defmodule McFun.ChatBot do
       end
     end)
 
-    state = add_bot_response(state, username, response)
+    state = state |> add_bot_response(username, response) |> track_last_message(response)
     {:noreply, state}
   end
 
@@ -232,7 +260,7 @@ defmodule McFun.ChatBot do
       end
     end)
 
-    state = add_bot_response(state, username, response)
+    state = state |> add_bot_response(username, response) |> track_last_message(response)
     {:noreply, state}
   end
 
@@ -246,6 +274,10 @@ defmodule McFun.ChatBot do
 
   # Heartbeat — periodic ambient chat
   @impl true
+  def handle_info(:heartbeat, %{heartbeat_enabled: false} = state) do
+    {:noreply, state}
+  end
+
   def handle_info(:heartbeat, state) do
     now = System.monotonic_time(:millisecond)
 
@@ -298,7 +330,8 @@ defmodule McFun.ChatBot do
     end
 
     now = System.monotonic_time(:millisecond)
-    {:noreply, schedule_heartbeat(%{state | last_heartbeat: now})}
+    state = state |> track_last_message(text) |> Map.put(:last_heartbeat, now)
+    {:noreply, schedule_heartbeat(state)}
   end
 
   @impl true
@@ -314,7 +347,8 @@ defmodule McFun.ChatBot do
     end
 
     now = System.monotonic_time(:millisecond)
-    {:noreply, schedule_heartbeat(%{state | last_heartbeat: now})}
+    state = state |> track_last_message(text) |> Map.put(:last_heartbeat, now)
+    {:noreply, schedule_heartbeat(state)}
   end
 
   @impl true
@@ -485,6 +519,11 @@ defmodule McFun.ChatBot do
     history = Map.get(state.conversations, username, [])
     history = [{:bot, response} | history] |> Enum.take(@max_history)
     %{state | conversations: Map.put(state.conversations, username, history)}
+  end
+
+  defp track_last_message(state, text) do
+    stripped = strip_thinking(text)
+    if stripped != "", do: %{state | last_message: stripped}, else: state
   end
 
   # Track last activity and evict stale/excess conversations

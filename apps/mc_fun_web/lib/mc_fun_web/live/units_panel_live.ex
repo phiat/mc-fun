@@ -190,6 +190,20 @@ defmodule McFunWeb.UnitsPanelLive do
 
   def handle_event("teleport_bot", _, socket), do: {:noreply, socket}
 
+  def handle_event("toggle_heartbeat", %{"bot" => bot, "enabled" => enabled}, socket) do
+    enabled? = enabled == "true"
+
+    try do
+      McFun.ChatBot.toggle_heartbeat(bot, enabled?)
+      notify_parent(socket, :refresh_bot_statuses)
+    catch
+      _, _ ->
+        notify_parent(socket, {:flash, :error, "ChatBot not active for #{bot}"})
+    end
+
+    {:noreply, socket}
+  end
+
   def handle_event("stop_bot", %{"name" => name}, socket) do
     stop_chatbot(name)
     McFun.BotSupervisor.stop_bot(name)

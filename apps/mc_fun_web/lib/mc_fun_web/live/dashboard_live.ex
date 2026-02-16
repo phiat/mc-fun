@@ -330,27 +330,32 @@ defmodule McFunWeb.DashboardLive do
 
   defp build_bot_statuses do
     for bot <- list_bots(), into: %{} do
-      chatbot_running? = Registry.lookup(McFun.BotRegistry, {:chat_bot, bot}) != []
-      chatbot_info = if chatbot_running?, do: try_chatbot_info(bot), else: nil
-      behavior_info = try_behavior_info(bot)
-      bot_status = try_bot_status(bot)
-
-      {bot,
-       %{
-         chatbot: chatbot_running?,
-         model: chatbot_info && chatbot_info[:model],
-         personality: chatbot_info && chatbot_info[:personality],
-         conversations: chatbot_info && chatbot_info[:conversations],
-         conversation_players: chatbot_info && chatbot_info[:conversation_players],
-         behavior: behavior_info,
-         position: bot_status[:position],
-         health: bot_status[:health],
-         food: bot_status[:food],
-         dimension: bot_status[:dimension],
-         inventory: bot_status[:inventory] || [],
-         cost: McFun.CostTracker.get_bot_cost(bot)
-       }}
+      {bot, build_single_bot_status(bot)}
     end
+  end
+
+  defp build_single_bot_status(bot) do
+    chatbot_running? = Registry.lookup(McFun.BotRegistry, {:chat_bot, bot}) != []
+    chatbot_info = if chatbot_running?, do: try_chatbot_info(bot), else: nil
+    behavior_info = try_behavior_info(bot)
+    bot_status = try_bot_status(bot)
+
+    %{
+      chatbot: chatbot_running?,
+      model: chatbot_info && chatbot_info[:model],
+      personality: chatbot_info && chatbot_info[:personality],
+      conversations: chatbot_info && chatbot_info[:conversations],
+      conversation_players: chatbot_info && chatbot_info[:conversation_players],
+      heartbeat_enabled: chatbot_info && chatbot_info[:heartbeat_enabled],
+      last_message: chatbot_info && chatbot_info[:last_message],
+      behavior: behavior_info,
+      position: bot_status[:position],
+      health: bot_status[:health],
+      food: bot_status[:food],
+      dimension: bot_status[:dimension],
+      inventory: bot_status[:inventory] || [],
+      cost: McFun.CostTracker.get_bot_cost(bot)
+    }
   end
 
   defp try_bot_status(bot_name) do

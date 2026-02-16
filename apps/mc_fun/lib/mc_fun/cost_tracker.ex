@@ -10,7 +10,7 @@ defmodule McFun.CostTracker do
   require Logger
 
   @table :mc_fun_costs
-  @persistence_path "apps/mc_fun/priv/cost_data.json"
+  @persistence_file "cost_data.json"
   @flush_delay_ms 5_000
 
   # Groq model pricing ($/1M tokens)
@@ -61,8 +61,8 @@ defmodule McFun.CostTracker do
   end
 
   @doc "Format a cost value for display."
-  def format_cost(cost) when cost < 0.01, do: "$#{Float.round(cost * 1.0, 4)}"
-  def format_cost(cost), do: "$#{Float.round(cost * 1.0, 2)}"
+  def format_cost(cost) when cost < 0.01, do: "$#{Float.round(cost, 4)}"
+  def format_cost(cost), do: "$#{Float.round(cost, 2)}"
 
   @doc "Format a token count for display."
   def format_tokens(n) when is_integer(n) and n >= 1_000_000,
@@ -180,7 +180,7 @@ defmodule McFun.CostTracker do
       end)
       |> Map.new()
 
-    path = Path.join(File.cwd!(), @persistence_path)
+    path = Path.join(:code.priv_dir(:mc_fun), @persistence_file)
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, Jason.encode!(data, pretty: true))
   rescue
@@ -189,7 +189,7 @@ defmodule McFun.CostTracker do
   end
 
   defp load_from_disk do
-    path = Path.join(File.cwd!(), @persistence_path)
+    path = Path.join(:code.priv_dir(:mc_fun), @persistence_file)
 
     with {:ok, content} <- File.read(path),
          {:ok, data} <- Jason.decode(content) do

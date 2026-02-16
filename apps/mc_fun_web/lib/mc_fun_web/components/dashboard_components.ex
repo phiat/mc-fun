@@ -174,6 +174,21 @@ defmodule McFunWeb.DashboardComponents do
               <span>BEHAVIOR</span>
               <span class="text-[#aa66ff]">{format_behavior(@status.behavior)}</span>
             </div>
+            <div class="flex justify-between items-center">
+              <span>HEARTBEAT</span>
+              <button
+                phx-click="toggle_heartbeat"
+                phx-target={@target}
+                phx-value-bot={@bot}
+                phx-value-enabled={to_string(!@status[:heartbeat_enabled])}
+                class={"text-[10px] tracking-widest " <>
+                  if(@status[:heartbeat_enabled],
+                    do: "text-[#00ff88]",
+                    else: "text-[#ff4444]")}
+              >
+                {if @status[:heartbeat_enabled], do: "ON", else: "OFF"}
+              </button>
+            </div>
             <%= if @status[:cost] && @status.cost.calls > 0 do %>
               <div class="flex justify-between">
                 <span>COST</span>
@@ -257,6 +272,17 @@ defmodule McFunWeb.DashboardComponents do
                   </div>
                 <% end %>
               </div>
+            <% end %>
+            <%!-- Last message --%>
+            <%= if @status[:last_message] do %>
+              <details class="pt-1 border-t border-[#222]">
+                <summary class="text-[9px] text-[#666] cursor-pointer hover:text-[#aaa] select-none">
+                  LAST MESSAGE
+                </summary>
+                <div class="mt-1 text-[10px] text-[#aaa] bg-[#080810] border border-[#222] p-2 break-words max-h-20 overflow-y-auto">
+                  {@status.last_message}
+                </div>
+              </details>
             <% end %>
             <%!-- Model switcher --%>
             <div class="pt-1 flex gap-1">

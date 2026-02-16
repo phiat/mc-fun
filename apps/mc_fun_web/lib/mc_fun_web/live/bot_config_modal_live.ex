@@ -141,6 +141,26 @@ defmodule McFunWeb.BotConfigModalLive do
               </div>
             </div>
 
+            <%!-- Heartbeat toggle --%>
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-[10px] tracking-wider text-[#888]">HEARTBEAT</label>
+                <div class="text-[9px] text-[#555]">Ambient random thoughts in chat</div>
+              </div>
+              <button
+                phx-click="toggle_heartbeat"
+                phx-target={@myself}
+                phx-value-bot={@bot}
+                phx-value-enabled={to_string(!(@status && @status[:heartbeat_enabled]))}
+                class={"px-4 py-1.5 border text-[10px] tracking-widest transition-all " <>
+                  if(@status && @status[:heartbeat_enabled],
+                    do: "border-[#00ff88] text-[#00ff88] hover:bg-[#00ff88]/10",
+                    else: "border-[#ff4444] text-[#ff4444] hover:bg-[#ff4444]/10")}
+              >
+                {if @status && @status[:heartbeat_enabled], do: "ON", else: "OFF"}
+              </button>
+            </div>
+
             <%!-- Conversation history --%>
             <div>
               <div class="flex items-center justify-between mb-1">
@@ -570,6 +590,20 @@ defmodule McFunWeb.BotConfigModalLive do
     McFun.BotBehaviors.start_guard(bot, {x, y, z}, radius: radius)
     notify_parent(socket, {:flash, :info, "#{bot} guarding #{x},#{y},#{z} (r=#{radius})"})
     notify_parent(socket, :refresh_bot_statuses)
+    {:noreply, socket}
+  end
+
+  def handle_event("toggle_heartbeat", %{"bot" => bot, "enabled" => enabled}, socket) do
+    enabled? = enabled == "true"
+
+    try do
+      McFun.ChatBot.toggle_heartbeat(bot, enabled?)
+      notify_parent(socket, :refresh_bot_statuses)
+    catch
+      _, _ ->
+        notify_parent(socket, {:flash, :error, "ChatBot not active for #{bot}"})
+    end
+
     {:noreply, socket}
   end
 
