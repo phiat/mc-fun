@@ -232,14 +232,16 @@ defmodule McFunWeb.DashboardLive do
 
     case preset_atom && McFun.Presets.get(preset_atom) do
       {:ok, preset} ->
+        combined = String.trim(default_personality()) <> "\n\n" <> String.trim(preset.system_prompt)
+
         {:noreply,
          assign(socket,
            selected_preset: preset_id,
-           deploy_personality: String.trim(preset.system_prompt)
+           deploy_personality: combined
          )}
 
       _ ->
-        {:noreply, socket}
+        {:noreply, put_flash(socket, :error, "Preset not found: #{preset_id}")}
     end
   end
 
@@ -257,8 +259,11 @@ defmodule McFunWeb.DashboardLive do
 
     case preset_atom && McFun.Presets.get(preset_atom) do
       {:ok, preset} ->
+        # Append preset personality onto the base MC personality
+        combined = String.trim(default_personality()) <> "\n\n" <> String.trim(preset.system_prompt)
+
         try do
-          McFun.ChatBot.set_personality(bot, String.trim(preset.system_prompt))
+          McFun.ChatBot.set_personality(bot, combined)
           {:noreply,
            socket
            |> put_flash(:info, "#{bot} >> #{preset.name}")
@@ -268,7 +273,7 @@ defmodule McFunWeb.DashboardLive do
         end
 
       _ ->
-        {:noreply, socket}
+        {:noreply, put_flash(socket, :error, "Preset not found: #{preset_id}")}
     end
   end
 
@@ -677,12 +682,9 @@ defmodule McFunWeb.DashboardLive do
                   class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none focus:shadow-[0_0_8px_rgba(0,255,255,0.2)]"
                   phx-change="select_model"
                   name="model"
+                  value={@selected_model}
                 >
-                  <option
-                    :for={model <- @available_models}
-                    value={model}
-                    selected={model == @selected_model}
-                  >
+                  <option :for={model <- @available_models} value={model}>
                     {model}
                   </option>
                   <option :if={@available_models == []} value={@selected_model}>
@@ -699,15 +701,12 @@ defmodule McFunWeb.DashboardLive do
                   class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none focus:shadow-[0_0_8px_rgba(0,255,255,0.2)]"
                   phx-change="select_preset"
                   name="preset"
+                  value={@selected_preset || "custom"}
                 >
-                  <option value="custom" selected={@selected_preset == nil}>Custom</option>
+                  <option value="custom">Custom</option>
                   <%= for {category, presets} <- McFun.Presets.by_category() do %>
                     <optgroup label={category |> to_string() |> String.upcase()}>
-                      <option
-                        :for={preset <- presets}
-                        value={preset.id}
-                        selected={to_string(preset.id) == @selected_preset}
-                      >
+                      <option :for={preset <- presets} value={preset.id}>
                         {preset.name}
                       </option>
                     </optgroup>
@@ -856,12 +855,9 @@ defmodule McFunWeb.DashboardLive do
                           phx-change="change_bot_model"
                           name="model"
                           phx-value-bot={bot}
+                          value={status.model}
                         >
-                          <option
-                            :for={model <- @available_models}
-                            value={model}
-                            selected={model == status.model}
-                          >
+                          <option :for={model <- @available_models} value={model}>
                             {model}
                           </option>
                         </select>
@@ -924,8 +920,9 @@ defmodule McFunWeb.DashboardLive do
         <%= if @selected_bot do %>
           <% bot = @selected_bot %>
           <% status = @bot_statuses[bot] %>
-          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70" phx-click="close_bot_config">
-            <div class="w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-[#0d0d14] border-2 border-[#00ffff]/40 shadow-[0_0_30px_rgba(0,255,255,0.15)]" phx-click-away="close_bot_config" onclick="event.stopPropagation()">
+          <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+            <div class="fixed inset-0" phx-click="close_bot_config"></div>
+            <div class="relative z-10 w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-[#0d0d14] border-2 border-[#00ffff]/40 shadow-[0_0_30px_rgba(0,255,255,0.15)]">
               <%!-- Modal header --%>
               <div class="flex items-center justify-between px-4 py-3 border-b border-[#222]">
                 <div class="flex items-center gap-2">
@@ -963,12 +960,9 @@ defmodule McFunWeb.DashboardLive do
                       phx-change="change_bot_model"
                       name="model"
                       phx-value-bot={bot}
+                      value={status && status.model}
                     >
-                      <option
-                        :for={model <- @available_models}
-                        value={model}
-                        selected={model == (status && status.model)}
-                      >
+                      <option :for={model <- @available_models} value={model}>
                         {model}
                       </option>
                     </select>
