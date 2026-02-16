@@ -25,6 +25,17 @@ mix mc.give Player diamond 64           # give item
 mix mc.tp Player 0 64 0                # teleport
 mix mc.weather clear                    # set weather
 mix mc.time day                         # set time
+mix mc.gamemode creative @a             # set gamemode
+mix mc.effect @a speed 30 2             # give effect (duration, amplifier)
+mix mc.heal @a                          # full heal + feed
+
+# Effects & titles
+mix mc.fx title @a "Hello" "subtitle"   # title screen message
+mix mc.fx welcome @a                    # welcome effect (title + firework)
+mix mc.fx celebration @a                # celebration effect
+mix mc.fx firework @a                   # firework
+mix mc.fx sound @a block.note_block.harp # play sound
+mix mc.fx particle @a flame             # particle effect
 
 # Observability
 mix mc.status                           # system health check (RCON, players, GenServers)

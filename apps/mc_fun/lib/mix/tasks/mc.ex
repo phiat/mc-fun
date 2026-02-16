@@ -127,6 +127,72 @@ defmodule Mix.Tasks.Mc.Time do
   def run(_), do: Mix.shell().error("Usage: mix mc.time <day|night|noon|midnight|NUMBER>")
 end
 
+defmodule Mix.Tasks.Mc.Gamemode do
+  @moduledoc "Set gamemode: mix mc.gamemode creative @a"
+  @shortdoc "Set gamemode"
+  use Mix.Task
+
+  @impl true
+  def run([mode, target | _]) do
+    Mix.Task.run("app.start")
+
+    case McFun.Rcon.command("gamemode #{mode} #{target}") do
+      {:ok, response} -> Mix.shell().info(response)
+      {:error, reason} -> Mix.shell().error("Error: #{inspect(reason)}")
+    end
+  end
+
+  def run(_),
+    do:
+      Mix.shell().error("Usage: mix mc.gamemode <survival|creative|spectator|adventure> <target>")
+end
+
+defmodule Mix.Tasks.Mc.Effect do
+  @moduledoc "Give effect: mix mc.effect @a speed 30 2"
+  @shortdoc "Give effect to player"
+  use Mix.Task
+
+  @impl true
+  def run([target, effect | rest]) do
+    Mix.Task.run("app.start")
+    duration = List.first(rest, "30")
+    amplifier = Enum.at(rest, 1, "0")
+
+    case McFun.Rcon.command("effect give #{target} #{effect} #{duration} #{amplifier}") do
+      {:ok, response} -> Mix.shell().info(response)
+      {:error, reason} -> Mix.shell().error("Error: #{inspect(reason)}")
+    end
+  end
+
+  def run(_),
+    do: Mix.shell().error("Usage: mix mc.effect <target> <effect> [duration] [amplifier]")
+end
+
+defmodule Mix.Tasks.Mc.Heal do
+  @moduledoc "Full heal + feed: mix mc.heal @a"
+  @shortdoc "Heal and feed a player"
+  use Mix.Task
+
+  @impl true
+  def run([target | _]) do
+    Mix.Task.run("app.start")
+
+    rcon("effect give #{target} instant_health 1 255")
+    rcon("effect give #{target} saturation 1 255")
+
+    Mix.shell().info("Healed #{target}")
+  end
+
+  def run(_), do: Mix.shell().error("Usage: mix mc.heal <target>")
+
+  defp rcon(cmd) do
+    case McFun.Rcon.command(cmd) do
+      {:ok, response} -> if response != "", do: Mix.shell().info(response)
+      {:error, reason} -> Mix.shell().error("Error: #{inspect(reason)}")
+    end
+  end
+end
+
 defmodule Mix.Tasks.Mc.Status do
   @moduledoc "System health check: mix mc.status"
   @shortdoc "Check system health"
