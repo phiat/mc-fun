@@ -1,0 +1,204 @@
+MC Fun — System Architecture
+═══════════════════════════════════════════════════════════════════════════
+
+                         ┌─────────────────────────────────────────────┐
+                         │           miniwini-1  (remote host)         │
+                         │  ┌───────────────────────────────────────┐  │
+                         │  │     Incus Container: minecraft        │  │
+                         │  │                                       │  │
+                         │  │  ┌─────────────────────────────────┐  │  │
+                         │  │  │   Minecraft Server (Java)       │  │  │
+                         │  │  │   /opt/minecraft/server/        │  │  │
+                         │  │  │                                 │  │  │
+                         │  │  │   :25565  MC protocol (bots)    │  │  │
+                         │  │  │   :25575  RCON (commands)       │  │  │
+                         │  │  └────────┬──────────┬─────────────┘  │  │
+                         │  └───────────┼──────────┼────────────────┘  │
+                         └──────────────┼──────────┼───────────────────┘
+                                        │          │
+                           MC protocol  │          │  RCON (TCP)
+                           (bot comms)  │          │  (server cmds)
+                                        │          │
+┌───────────────────────────────────────┼──────────┼───────────────────────────┐
+│  MC Fun Application (Elixir/OTP)      │          │                           │
+│                                       │          │                           │
+│  ┌─ Engine App (mc_fun) ──────────────┼──────────┼────────────────────────┐  │
+│  │                                    │          │                        │  │
+│  │  ┌─────────────────┐    ┌─────────┴──────────┴─────────┐             │  │
+│  │  │  McFun.PubSub   │    │        McFun.Rcon             │             │  │
+│  │  │  (Phoenix.PubSub)│    │  GenServer — TCP connection   │             │  │
+│  │  │                 │    │  Crashes on auth fail (fast)   │             │  │
+│  │  │  Topics:        │    └──────────┬───────────────────┘             │  │
+│  │  │  mc_events:*    │               │                                  │  │
+│  │  │  player_statuses│               │  command/1                       │  │
+│  │  │  bot:*          │               │                                  │  │
+│  │  └───┬──────┬──────┘    ┌──────────┼──────────────────────────┐      │  │
+│  │      │      │           │          │                          │      │  │
+│  │      │      │     ┌─────┴────┐  ┌──┴──────────┐  ┌──────────┐│      │  │
+│  │      │      │     │LogWatcher│  │  Effects     │  │ Display  ││      │  │
+│  │      │      │     │          │  │              │  │          ││      │  │
+│  │      │      │     │ RCON poll│  │ celebration  │  │ block    ││      │  │
+│  │      │      │     │ 2s tick  │  │ welcome      │  │ text     ││      │  │
+│  │      │      │     │          │  │ firework     │  │ renderer ││      │  │
+│  │      │      │     │ Detects: │  │ death        │  │          ││      │  │
+│  │      │      │     │  joins   │  └──────────────┘  └──────────┘│      │  │
+│  │      │      │     │  leaves  │                                │      │  │
+│  │      │      │     │  player  │                                │      │  │
+│  │      │      │     │  data    │                                │      │  │
+│  │      │      │     └────┬─────┘                                │      │  │
+│  │      │      │          │ dispatches events                    │      │  │
+│  │      │      │          ▼                                      │      │  │
+│  │      │      │  ┌───────────────┐    ┌───────────────────┐    │      │  │
+│  │      │      │  │ McFun.Events  │───▶│ McFun.EventStore  │    │      │  │
+│  │      │      │  │               │    │                   │    │      │  │
+│  │      │      │  │ dispatch/2    │    │ Last 200 events   │    │      │  │
+│  │      │      │  │ subscribe/1   │    │ In-memory (list)  │    │      │  │
+│  │      │      │  └───────────────┘    └───────────────────┘    │      │  │
+│  │      │      │                                                 │      │  │
+│  │  ┌───┼──────┼─────────────────────────────────────────────┐  │      │  │
+│  │  │   │  Bot │Layer (DynamicSupervisor)                    │  │      │  │
+│  │  │   │      │                                             │  │      │  │
+│  │  │   │      │  ┌─────────────────────────────────────┐   │  │      │  │
+│  │  │   │      │  │  McFun.Bot (per bot)                │   │  │      │  │
+│  │  │   │      │  │                                     │   │  │      │  │
+│  │  │   │      │  │  Erlang Port ◄──► bridge.js (Node)  │───┼──┼──┐   │  │
+│  │  │   │      │  │  JSON over stdin/stdout             │   │  │  │   │  │
+│  │  │   │      │  │                                     │   │  │  │   │  │
+│  │  │   │      │  │  Actions: dig, place, goto, follow, │   │  │  │   │  │
+│  │  │   │      │  │    jump, attack, craft, equip, ...  │   │  │  │   │  │
+│  │  │   │      │  │  Status: pos (5s poll), HP, food    │   │  │  │   │  │
+│  │  │   │      │  └─────────────────────────────────────┘   │  │  │   │  │
+│  │  │   │      │                                             │  │  │   │  │
+│  │  │   │      │  ┌──────────────┐  ┌────────────────────┐  │  │  │   │  │
+│  │  │   │      │  │McFun.ChatBot │  │McFun.BotBehaviors  │  │  │  │   │  │
+│  │  │   │      │  │              │  │                    │  │  │  │   │  │
+│  │  │   │      │  │ !ask !model  │  │ patrol (waypoints) │  │  │  │   │  │
+│  │  │   │      │  │ !personality │  │ follow (player)    │  │  │  │   │  │
+│  │  │   │      │  │ !tp !reset   │  │ guard  (pos+radius)│  │  │  │   │  │
+│  │  │   │      │  │              │  │                    │  │  │  │   │  │
+│  │  │   │      │  │ Groq API ────┼──┼───▶ LLM ──┐       │  │  │  │   │  │
+│  │  │   │      │  │ Tool calling │  │    1s tick │       │  │  │  │   │  │
+│  │  │   │      │  │ ActionParser │  │            │       │  │  │  │   │  │
+│  │  │   │      │  └──────────────┘  └────────────┘       │  │  │  │   │  │
+│  │  │   │      │                                          │  │  │  │   │  │
+│  │  │   │      │  ┌──────────────────┐  ┌──────────────┐ │  │  │  │   │  │
+│  │  │   │      │  │ BotRegistry      │  │ ModelCache   │ │  │  │  │   │  │
+│  │  │   │      │  │ (Registry)       │  │ (ETS + disk) │ │  │  │  │   │  │
+│  │  │   │      │  │                  │  │ Groq models  │ │  │  │  │   │  │
+│  │  │   │      │  │ Keys:            │  └──────────────┘ │  │  │  │   │  │
+│  │  │   │      │  │  "Name"     Bot  │                   │  │  │  │   │  │
+│  │  │   │      │  │  {:chat_bot,..}  │  ┌──────────────┐ │  │  │  │   │  │
+│  │  │   │      │  │  {:behavior,..}  │  │ Presets (22)  │ │  │  │  │   │  │
+│  │  │   │      │  └──────────────────┘  └──────────────┘ │  │  │  │   │  │
+│  │  │   │      └─────────────────────────────────────────┘  │  │  │   │  │
+│  │  └───┼──────┼────────────────────────────────────────────┘  │  │   │  │
+│  │      │      │                                                │  │   │  │
+│  └──────┼──────┼────────────────────────────────────────────────┘  │   │  │
+│         │      │                                                    │   │  │
+│  ┌─ Web App (mc_fun_web) ──────────────────────────────────────────┼───┘  │
+│  │      │      │                                                    │      │
+│  │  ┌───┴──────┴────────────────────────────────────────────┐      │      │
+│  │  │  McFunWeb.Endpoint (:4000)                            │      │      │
+│  │  │                                                       │      │      │
+│  │  │  Routes:                                              │      │      │
+│  │  │    /           → HomePage (static)                    │      │      │
+│  │  │    /dashboard  → DashboardLive (LiveView)             │      │      │
+│  │  │    /api/webhooks/:action → WebhookController          │      │      │
+│  │  │                                                       │      │      │
+│  │  │  ┌─────────────────────────────────────────────────┐  │      │      │
+│  │  │  │  DashboardLive                                  │  │      │      │
+│  │  │  │                                                 │  │      │      │
+│  │  │  │  Tabs: UNITS | PLAYERS | RCON | FX | DISPLAY |  │  │      │      │
+│  │  │  │        EVENTS                                   │  │      │      │
+│  │  │  │                                                 │  │      │      │
+│  │  │  │  Subscribes to PubSub: bot:*, mc_events:all,    │  │      │      │
+│  │  │  │    player_statuses                              │  │      │      │
+│  │  │  │                                                 │  │      │      │
+│  │  │  │  Async: RCON cmds & LLM calls via Task.start   │  │      │      │
+│  │  │  │    (results via send/2 to avoid blocking LV)    │  │      │      │
+│  │  │  └─────────────────────────────────────────────────┘  │      │      │
+│  │  └───────────────────────────────────────────────────────┘      │      │
+│  └─────────────────────────────────────────────────────────────────┘      │
+│                                                                           │
+│  ┌─ CLI Tools (Mix Tasks) ─────────────────────────────────────────────┐  │
+│  │  mix mc.cmd      — RCON command        mix mc.status — health check │  │
+│  │  mix mc.players  — list players        mix mc.events — event stream │  │
+│  │  mix mc.say      — broadcast           mix mc.give   — give item    │  │
+│  │  mix mc.tp       — teleport            mix mc.weather — set weather │  │
+│  │  mix mc.time     — set time                                         │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+│                                                                           │
+│  ┌─ External ──────────────────────────────────────────────────────────┐  │
+│  │  Groq API  ◄── McFun.LLM.Client (Req HTTP)                        │  │
+│  │  Models: openai/gpt-oss-20b (default), llama, qwen, compound, etc  │  │
+│  └─────────────────────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────────────────────┘
+
+
+Data Flow: Player Chat → Bot Response
+═══════════════════════════════════════
+
+  Player types "!ask what's around you?"
+       │
+       ▼
+  MC Server ──RCON poll──▶ LogWatcher detects chat
+       │                        │
+       │                        ▼ dispatch(:player_chat)
+       │                   Events/PubSub
+       │                        │
+       │                        ▼
+       │                   ChatBot receives
+       │                        │
+       │                   Bot.survey/1 ──▶ bridge.js ──▶ MC Server
+       │                        │              nearby blocks, entities
+       │                        │◄─────────────────────────────────────
+       │                        │
+       │                   Groq LLM API call
+       │                   (with survey context + personality)
+       │                        │
+       │                        ▼
+       │                   LLM response
+       │                        │
+       │               ┌────────┴────────┐
+       │               │                 │
+       │          Tool-capable?     ActionParser
+       │          (tool calling)    (regex fallback)
+       │               │                 │
+       │               └────────┬────────┘
+       │                        │
+       │                   Bot.send_command
+       │                        │
+       │                   bridge.js ──▶ MC Server
+       │                        │
+       │                   Bot.chat (paginated)
+       │                        │
+       ▼                   bridge.js ──▶ MC Server
+  Player sees bot                    (chat appears in game)
+  perform action
+  and respond
+
+
+Player Data Fetching (LogWatcher)
+═════════════════════════════════
+
+  RCON: "execute as <player> run data get entity @s"
+       │
+       ▼
+  Response truncated? (RCON limit ~512 chars)
+       │
+  ┌────┴────┐
+  │ No      │ Yes (Health/Pos not found)
+  │         │
+  │ parse   │ Fallback: individual field queries
+  │ full    │   "execute as <player> run data get entity @s Health"
+  │ NBT     │   "execute as <player> run data get entity @s Pos"
+  │ blob    │   "execute as <player> run data get entity @s Dimension"
+  │         │   "execute as <player> run data get entity @s foodLevel"
+  │         │
+  └────┬────┘
+       │
+       ▼
+  %{health: 16.6, food: 17, position: {-412, 62, 288}, dimension: "overworld"}
+       │
+       ▼
+  PubSub broadcast "player_statuses" → DashboardLive updates

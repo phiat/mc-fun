@@ -15,6 +15,9 @@ Thumbs.db
 # Data directory (MC world backups, local state)
 data/
 
+# Debug scratch directory
+.debug/
+
 # Elixir / Mix
 /_build/
 /deps/
