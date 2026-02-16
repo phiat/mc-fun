@@ -25,6 +25,17 @@ config :mc_fun, :groq,
   api_key: Map.get(env, "GROQ_API_KEY", ""),
   model: Map.get(env, "GROQ_MODEL", "openai/gpt-oss-20b")
 
+# ChatBot tuning
+config :mc_fun, :chat_bot,
+  heartbeat_behavior_ms:
+    String.to_integer(Map.get(env, "CHATBOT_HEARTBEAT_BEHAVIOR_MS", "15000")),
+  heartbeat_idle_ms: String.to_integer(Map.get(env, "CHATBOT_HEARTBEAT_IDLE_MS", "120000")),
+  heartbeat_cooldown_ms:
+    String.to_integer(Map.get(env, "CHATBOT_HEARTBEAT_COOLDOWN_MS", "10000")),
+  followup_max_tokens: String.to_integer(Map.get(env, "CHATBOT_FOLLOWUP_MAX_TOKENS", "256")),
+  heartbeat_max_tokens: String.to_integer(Map.get(env, "CHATBOT_HEARTBEAT_MAX_TOKENS", "128")),
+  max_response_tokens: String.to_integer(Map.get(env, "CHATBOT_MAX_RESPONSE_TOKENS", "1024"))
+
 # Log watcher
 config :mc_fun, :log_watcher,
   log_path: Map.get(env, "MC_LOG_PATH"),

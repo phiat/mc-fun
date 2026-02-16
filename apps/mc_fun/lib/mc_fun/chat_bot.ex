@@ -27,10 +27,6 @@ defmodule McFun.ChatBot do
   @max_chat_lines 4
   @fallback_model "openai/gpt-oss-20b"
 
-  # Heartbeat intervals
-  @heartbeat_behavior_ms 15_000
-  @heartbeat_idle_ms 120_000
-  @heartbeat_cooldown_ms 10_000
   @heartbeat_initial_delay_ms 5_000
 
   @heartbeat_prompts [
@@ -254,7 +250,7 @@ defmodule McFun.ChatBot do
     now = System.monotonic_time(:millisecond)
 
     # Skip if recent player conversation (within cooldown)
-    if state.last_response && now - state.last_response < @heartbeat_cooldown_ms do
+    if state.last_response && now - state.last_response < chat_bot_config(:heartbeat_cooldown_ms) do
       Logger.debug("ChatBot #{state.bot_name}: heartbeat skipped (recent conversation)")
       {:noreply, schedule_heartbeat(state)}
     else
@@ -278,7 +274,7 @@ defmodule McFun.ChatBot do
 
         result =
           Groq.chat(system_prompt, [],
-            max_tokens: 128,
+            max_tokens: chat_bot_config(:heartbeat_max_tokens),
             model: model
           )
 
@@ -586,7 +582,9 @@ defmodule McFun.ChatBot do
         "Say something fun/witty to the player about what you're doing. " <>
         "1-2 sentences, no markdown."
 
-    case Groq.chat(system_prompt, [], max_tokens: 128, model: model) do
+    followup_tokens = chat_bot_config(:followup_max_tokens)
+
+    case Groq.chat(system_prompt, [], max_tokens: followup_tokens, model: model) do
       {:ok, text} ->
         reply = strip_thinking(text)
         if reply != "", do: reply, else: "On it!"
@@ -607,8 +605,8 @@ defmodule McFun.ChatBot do
 
     interval =
       case McFun.BotBehaviors.info(state.bot_name) do
-        %{behavior: _} -> @heartbeat_behavior_ms
-        _ -> @heartbeat_idle_ms
+        %{behavior: _} -> chat_bot_config(:heartbeat_behavior_ms)
+        _ -> chat_bot_config(:heartbeat_idle_ms)
       end
 
     ref = Process.send_after(self(), :heartbeat, interval)
@@ -618,6 +616,8 @@ defmodule McFun.ChatBot do
   defp default_model do
     Application.get_env(:mc_fun, :groq)[:model] || @fallback_model
   end
+
+  defp chat_bot_config(key), do: Application.get_env(:mc_fun, :chat_bot)[key]
 
   defp broadcast_llm_event(bot_name, username, response, tools) do
     event = %{
@@ -737,9 +737,11 @@ defmodule McFun.ChatBot do
 
   # Reasoning models need more tokens for chain-of-thought
   defp max_tokens_for(model_id) do
+    cap = chat_bot_config(:max_response_tokens)
+
     case ModelCache.get_model(model_id) do
-      {:ok, %{"max_completion_tokens" => max}} -> min(max, 1024)
-      _ -> 512
+      {:ok, %{"max_completion_tokens" => max}} -> min(max, cap)
+      _ -> div(cap, 2)
     end
   end
 
