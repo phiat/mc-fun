@@ -94,6 +94,36 @@ defmodule McFun.Bot do
     send_command(bot_name, %{action: "drop"})
   end
 
+  @doc "Activate a block (buttons, levers, chests, doors) at the given coordinates."
+  def activate_block(bot_name, x, y, z) do
+    send_command(bot_name, %{action: "activate_block", x: x, y: y, z: z})
+  end
+
+  @doc "Use the currently held item (eat food, throw, etc.)."
+  def use_item(bot_name) do
+    send_command(bot_name, %{action: "use_item"})
+  end
+
+  @doc "Stop using the currently held item."
+  def deactivate_item(bot_name) do
+    send_command(bot_name, %{action: "deactivate_item"})
+  end
+
+  @doc "Sleep in a nearby bed (within 4 blocks)."
+  def sleep(bot_name) do
+    send_command(bot_name, %{action: "sleep"})
+  end
+
+  @doc "Wake up from a bed."
+  def wake(bot_name) do
+    send_command(bot_name, %{action: "wake"})
+  end
+
+  @doc "Get bridge-side bot status (pathfinder, queue, digging state)."
+  def bot_status(bot_name) do
+    send_command(bot_name, %{action: "status"})
+  end
+
   @doc "Teleport bot to a player via RCON."
   def teleport_to(bot_name, player) do
     McFun.Rcon.command("tp #{bot_name} #{player}")
@@ -332,6 +362,16 @@ defmodule McFun.Bot do
     Logger.warning("Bot #{state.name}: action error (#{event})")
     broadcast_action_change(state.name, nil)
     clear_action(state)
+  end
+
+  defp update_state_from_event(state, %{"event" => "disconnected", "reason" => reason}) do
+    Logger.warning("Bot #{state.name}: disconnected (#{reason}), waiting for reconnect...")
+    state
+  end
+
+  defp update_state_from_event(state, %{"event" => "reconnecting", "attempt" => attempt}) do
+    Logger.info("Bot #{state.name}: reconnect attempt #{attempt}")
+    state
   end
 
   defp update_state_from_event(state, _event), do: state

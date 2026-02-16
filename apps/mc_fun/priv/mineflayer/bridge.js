@@ -25,88 +25,244 @@ function log(msg) {
   process.stderr.write(`[bridge] ${msg}\n`);
 }
 
-// Track movement fallback timers to avoid leaks
+// --- Helpers ---
+
+/**
+ * Race a promise against a timeout. Rejects with a descriptive error on timeout.
+ */
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Validate that coordinates are finite numbers. Returns true if valid.
+ */
+function validCoords(x, y, z) {
+  return isFinite(x) && isFinite(y) && isFinite(z);
+}
+
+// --- Command queue for async actions ---
+
+let actionBusy = false;
+const actionQueue = [];
+let activeCleanups = []; // cleanup functions for pending goal_reached listeners
+
+const SYNC_ACTIONS = new Set([
+  'chat', 'whisper', 'position', 'inventory', 'players',
+  'look', 'jump', 'sneak', 'status', 'survey', 'stop', 'quit'
+]);
+
+function processCommand(cmd) {
+  if (SYNC_ACTIONS.has(cmd.action)) {
+    executeCommand(cmd);
+  } else if (actionBusy) {
+    actionQueue.push(cmd);
+    send({ event: 'queued', action: cmd.action, queue_length: actionQueue.length });
+  } else {
+    executeAction(cmd);
+  }
+}
+
+function executeAction(cmd) {
+  actionBusy = true;
+  executeCommand(cmd);
+}
+
+function actionDone() {
+  actionBusy = false;
+  if (actionQueue.length > 0) {
+    const next = actionQueue.shift();
+    executeAction(next);
+  }
+}
+
+function clearQueue() {
+  actionQueue.length = 0;
+  actionBusy = false;
+}
+
+// --- Goal reached helper with cleanup ---
+
+/**
+ * Listen for goal_reached with timeout and cleanup tracking.
+ * Returns a cleanup function. Calls callback() on goal reached.
+ */
+function onGoalReached(callback, timeoutMs = 30000) {
+  let resolved = false;
+
+  const cleanup = () => {
+    if (resolved) return;
+    resolved = true;
+    bot.removeListener('goal_reached', handler);
+    clearTimeout(timer);
+    const idx = activeCleanups.indexOf(cleanup);
+    if (idx !== -1) activeCleanups.splice(idx, 1);
+  };
+
+  const handler = () => {
+    if (!resolved) {
+      cleanup();
+      callback();
+    }
+  };
+
+  bot.once('goal_reached', handler);
+
+  const timer = setTimeout(() => {
+    if (!resolved) {
+      cleanup();
+      try { bot.pathfinder.setGoal(null); } catch (_) {}
+      send({ event: 'error', message: `Pathfinding timed out after ${timeoutMs}ms` });
+      actionDone();
+    }
+  }, timeoutMs);
+
+  activeCleanups.push(cleanup);
+  return cleanup;
+}
+
+// --- Track movement fallback timers to avoid leaks ---
 let movementTimer = null;
 
 // Cancellation flag for long-running dig_area
 let digAreaCancelled = false;
 
-log(`Connecting as ${username} to ${host}:${port}`);
+// --- Reconnection state ---
+let bot = null;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const MAX_BACKOFF_MS = 30000;
+let reconnecting = false;
 
-const bot = mineflayer.createBot({
-  host,
-  port,
-  username,
-  auth: 'offline',
-  hideErrors: false,
-});
+// --- Bot creation and event binding ---
 
-// --- Events -> Elixir ---
+function createBot() {
+  bot = mineflayer.createBot({
+    host,
+    port,
+    username,
+    auth: 'offline',
+    hideErrors: false,
+  });
 
-// Load pathfinder plugin once, before spawn fires
-bot.loadPlugin(pathfinder);
+  bot.loadPlugin(pathfinder);
 
-bot.once('spawn', () => {
-  try {
-    const mcData = require('minecraft-data')(bot.version);
-    const defaultMove = new Movements(bot, mcData);
-    bot.pathfinder.setMovements(defaultMove);
-    log('Pathfinder loaded successfully');
-  } catch (err) {
-    log(`Pathfinder init failed (falling back to simple movement): ${err.message}`);
+  // --- Events -> Elixir ---
+
+  bot.once('spawn', () => {
+    try {
+      const mcData = require('minecraft-data')(bot.version);
+      const defaultMove = new Movements(bot, mcData);
+      bot.pathfinder.setMovements(defaultMove);
+      log('Pathfinder loaded successfully');
+    } catch (err) {
+      log(`Pathfinder init failed (falling back to simple movement): ${err.message}`);
+    }
+  });
+
+  bot.on('spawn', () => {
+    reconnectAttempts = 0;
+    reconnecting = false;
+    const pos = bot.entity.position;
+    const dimension = bot.game && bot.game.dimension;
+    send({ event: 'spawn', position: { x: pos.x, y: pos.y, z: pos.z }, dimension });
+    log('Bot spawned');
+  });
+
+  bot.on('chat', (uname, message) => {
+    if (uname === bot.username) return;
+    send({ event: 'chat', username: uname, message });
+  });
+
+  bot.on('whisper', (uname, message) => {
+    send({ event: 'whisper', username: uname, message });
+  });
+
+  bot.on('playerJoined', (player) => {
+    send({ event: 'player_joined', username: player.username });
+  });
+
+  bot.on('playerLeft', (player) => {
+    send({ event: 'player_left', username: player.username });
+  });
+
+  bot.on('health', () => {
+    send({ event: 'health', health: bot.health, food: bot.food });
+  });
+
+  bot.on('death', () => {
+    send({ event: 'death' });
+    log('Bot died — event sent, letting Elixir decide lifecycle');
+  });
+
+  bot.on('kicked', (reason) => {
+    send({ event: 'kicked', reason: reason.toString() });
+    log(`Kicked: ${reason}`);
+    // Kicked bots may be able to rejoin — trigger reconnect
+    scheduleReconnect('kicked');
+  });
+
+  bot.on('error', (err) => {
+    send({ event: 'error', message: err.message });
+    log(`Error: ${err.message}`);
+  });
+
+  bot.on('end', (reason) => {
+    send({ event: 'disconnected', reason: reason || 'unknown' });
+    log(`Disconnected: ${reason}`);
+    // Clean up async state
+    cleanupOnDisconnect();
+    scheduleReconnect(reason);
+  });
+}
+
+function cleanupOnDisconnect() {
+  // Clean up active goal listeners
+  for (const cleanup of [...activeCleanups]) {
+    cleanup();
   }
-});
+  activeCleanups = [];
+  clearQueue();
+  digAreaCancelled = true;
+  if (movementTimer) {
+    clearTimeout(movementTimer);
+    movementTimer = null;
+  }
+}
 
-bot.on('spawn', () => {
-  const pos = bot.entity.position;
-  const dimension = bot.game && bot.game.dimension;
-  send({ event: 'spawn', position: { x: pos.x, y: pos.y, z: pos.z }, dimension });
-  log('Bot spawned');
-});
+function scheduleReconnect(reason) {
+  if (reconnecting) return;
+  reconnecting = true;
+  reconnectAttempts++;
 
-bot.on('chat', (username, message) => {
-  if (username === bot.username) return; // ignore self
-  send({ event: 'chat', username, message });
-});
+  if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+    log(`Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached, exiting`);
+    send({ event: 'error', message: `Failed to reconnect after ${MAX_RECONNECT_ATTEMPTS} attempts` });
+    process.exit(1);
+  }
 
-bot.on('whisper', (username, message) => {
-  send({ event: 'whisper', username, message });
-});
+  // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s, 30s...
+  const backoffMs = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), MAX_BACKOFF_MS);
+  log(`Reconnecting in ${backoffMs}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+  send({ event: 'reconnecting', attempt: reconnectAttempts, backoff_ms: backoffMs });
 
-bot.on('playerJoined', (player) => {
-  send({ event: 'player_joined', username: player.username });
-});
+  setTimeout(() => {
+    log(`Attempting reconnect (attempt ${reconnectAttempts})`);
+    try {
+      createBot();
+    } catch (err) {
+      log(`Reconnect failed: ${err.message}`);
+      reconnecting = false;
+      scheduleReconnect('reconnect_failed');
+    }
+  }, backoffMs);
+}
 
-bot.on('playerLeft', (player) => {
-  send({ event: 'player_left', username: player.username });
-});
-
-bot.on('health', () => {
-  send({ event: 'health', health: bot.health, food: bot.food });
-});
-
-bot.on('death', () => {
-  send({ event: 'death' });
-  log('Bot died — event sent, letting Elixir decide lifecycle');
-});
-
-bot.on('kicked', (reason) => {
-  send({ event: 'kicked', reason: reason.toString() });
-  log(`Kicked: ${reason}`);
-});
-
-bot.on('error', (err) => {
-  send({ event: 'error', message: err.message });
-  log(`Error: ${err.message}`);
-});
-
-bot.on('end', (reason) => {
-  send({ event: 'end', reason });
-  log(`Disconnected: ${reason}`);
-  process.exit(0);
-});
-
-// --- Commands from Elixir -> Bot ---
+// --- stdin command handling ---
 
 const rl = readline.createInterface({ input: process.stdin });
 
@@ -119,16 +275,23 @@ rl.on('line', (line) => {
     return;
   }
 
-  handleCommand(cmd);
+  if (!bot) {
+    send({ event: 'error', message: 'Bot not connected yet' });
+    return;
+  }
+
+  processCommand(cmd);
 });
 
 rl.on('close', () => {
   log('stdin closed, shutting down');
-  try { bot.quit(); } catch (_) {}
+  try { if (bot) bot.quit(); } catch (_) {}
   process.exit(0);
 });
 
-function handleCommand(cmd) {
+// --- Command execution ---
+
+function executeCommand(cmd) {
   switch (cmd.action) {
     case 'chat':
       bot.chat(cmd.message || '');
@@ -142,8 +305,17 @@ function handleCommand(cmd) {
 
     case 'move': {
       const { x, y, z } = cmd;
+      if (!validCoords(x, y, z)) {
+        send({ event: 'error', action: 'move', message: `Invalid coordinates: ${x}, ${y}, ${z}` });
+        actionDone();
+        break;
+      }
       if (bot.pathfinder && bot.pathfinder.movements) {
         bot.pathfinder.setGoal(new GoalBlock(x, y, z));
+        onGoalReached(() => {
+          send({ event: 'move_done', x, y, z });
+          actionDone();
+        }, 30000);
       } else {
         // Simple fallback: look at target and walk
         const pos = bot.entity.position;
@@ -153,7 +325,7 @@ function handleCommand(cmd) {
         bot.look(yaw, 0, true);
         bot.setControlState('forward', true);
         if (movementTimer) clearTimeout(movementTimer);
-        movementTimer = setTimeout(() => { bot.clearControlStates(); movementTimer = null; }, 2000);
+        movementTimer = setTimeout(() => { bot.clearControlStates(); movementTimer = null; actionDone(); }, 2000);
       }
       send({ event: 'ack', action: 'move' });
       break;
@@ -185,6 +357,7 @@ function handleCommand(cmd) {
       } else {
         send({ event: 'error', message: 'No entity nearby to attack' });
       }
+      actionDone();
       break;
     }
 
@@ -223,12 +396,12 @@ function handleCommand(cmd) {
       break;
 
     case 'goto': {
-      // Support both coordinate-based goto and player-name target
       let gx, gy, gz;
       if (cmd.target) {
         const player = bot.players[cmd.target];
         if (!player || !player.entity) {
           send({ event: 'error', action: 'goto', message: `Player ${cmd.target} not found or not visible` });
+          actionDone();
           break;
         }
         gx = player.entity.position.x;
@@ -240,9 +413,18 @@ function handleCommand(cmd) {
         gz = cmd.z;
       }
 
+      if (!cmd.target && !validCoords(gx, gy, gz)) {
+        send({ event: 'error', action: 'goto', message: `Invalid coordinates: ${gx}, ${gy}, ${gz}` });
+        actionDone();
+        break;
+      }
+
       if (bot.pathfinder && bot.pathfinder.movements) {
         bot.pathfinder.setGoal(new GoalNear(gx, gy, gz, 2));
-        bot.once('goal_reached', () => send({ event: 'goto_done', x: gx, y: gy, z: gz }));
+        onGoalReached(() => {
+          send({ event: 'goto_done', x: gx, y: gy, z: gz });
+          actionDone();
+        }, 30000);
       } else {
         // Simple fallback: look toward target and walk
         const pos = bot.entity.position;
@@ -252,7 +434,7 @@ function handleCommand(cmd) {
         bot.look(yaw, 0, true);
         bot.setControlState('forward', true);
         if (movementTimer) clearTimeout(movementTimer);
-        movementTimer = setTimeout(() => { bot.clearControlStates(); movementTimer = null; }, 3000);
+        movementTimer = setTimeout(() => { bot.clearControlStates(); movementTimer = null; actionDone(); }, 3000);
       }
       send({ event: 'ack', action: 'goto', target: cmd.target || `${gx},${gy},${gz}` });
       break;
@@ -280,23 +462,31 @@ function handleCommand(cmd) {
       } else {
         send({ event: 'error', message: `Player ${cmd.target} not found or not visible` });
       }
+      // follow is continuous — don't call actionDone (stop will clear it)
       break;
     }
 
     case 'dig': {
       const { x, y, z } = cmd;
+      if (!validCoords(x, y, z)) {
+        send({ event: 'error', action: 'dig', message: `Invalid coordinates: ${x}, ${y}, ${z}` });
+        actionDone();
+        break;
+      }
       const block = bot.blockAt(new Vec3(x, y, z));
       if (!block || block.name === 'air') {
         send({ event: 'error', action: 'dig', message: `No block at ${x}, ${y}, ${z}` });
+        actionDone();
       } else {
-        bot.dig(block)
+        withTimeout(bot.dig(block), 30000, 'dig')
           .then(() => {
             send({ event: 'ack', action: 'dig', block: block.name, x, y, z });
             send({ event: 'dig_done', block: block.name, x, y, z });
           })
           .catch((err) => {
             send({ event: 'error', action: 'dig', message: err.message });
-          });
+          })
+          .finally(() => actionDone());
       }
       break;
     }
@@ -305,21 +495,27 @@ function handleCommand(cmd) {
       const target = bot.blockAtCursor(5);
       if (!target || target.name === 'air') {
         send({ event: 'error', action: 'dig_looking_at', message: 'No block in line of sight' });
+        actionDone();
       } else {
-        bot.dig(target)
+        withTimeout(bot.dig(target), 30000, 'dig_looking_at')
           .then(() => {
             send({ event: 'ack', action: 'dig_looking_at', block: target.name, x: target.position.x, y: target.position.y, z: target.position.z });
           })
           .catch((err) => {
             send({ event: 'error', action: 'dig_looking_at', message: err.message });
-          });
+          })
+          .finally(() => actionDone());
       }
       break;
     }
 
     case 'place': {
       const { x, y, z, face } = cmd;
-      // face: 'top', 'bottom', 'north', 'south', 'east', 'west' or {fx, fy, fz}
+      if (!validCoords(x, y, z)) {
+        send({ event: 'error', action: 'place', message: `Invalid coordinates: ${x}, ${y}, ${z}` });
+        actionDone();
+        break;
+      }
       const faceVectors = {
         top:    new Vec3(0, 1, 0),
         bottom: new Vec3(0, -1, 0),
@@ -339,14 +535,16 @@ function handleCommand(cmd) {
       const refBlock = bot.blockAt(new Vec3(x, y, z));
       if (!refBlock) {
         send({ event: 'error', action: 'place', message: `No reference block at ${x}, ${y}, ${z}` });
+        actionDone();
       } else {
-        bot.placeBlock(refBlock, faceVec)
+        withTimeout(bot.placeBlock(refBlock, faceVec), 10000, 'place')
           .then(() => {
             send({ event: 'ack', action: 'place', x, y, z, face: face || 'top' });
           })
           .catch((err) => {
             send({ event: 'error', action: 'place', message: err.message });
-          });
+          })
+          .finally(() => actionDone());
       }
       break;
     }
@@ -357,14 +555,16 @@ function handleCommand(cmd) {
       const item = bot.inventory.items().find(i => i.name === item_name);
       if (!item) {
         send({ event: 'error', action: 'equip', message: `Item '${item_name}' not in inventory` });
+        actionDone();
       } else {
-        bot.equip(item, dest)
+        withTimeout(bot.equip(item, dest), 10000, 'equip')
           .then(() => {
             send({ event: 'ack', action: 'equip', item_name, destination: dest });
           })
           .catch((err) => {
             send({ event: 'error', action: 'equip', message: err.message });
-          });
+          })
+          .finally(() => actionDone());
       }
       break;
     }
@@ -375,19 +575,22 @@ function handleCommand(cmd) {
       const itemDef = mcData.itemsByName[item_name];
       if (!itemDef) {
         send({ event: 'error', action: 'craft', message: `Unknown item: '${item_name}'` });
+        actionDone();
         break;
       }
       const recipes = bot.recipesFor(itemDef.id, null, count || 1, null);
       if (!recipes || recipes.length === 0) {
         send({ event: 'error', action: 'craft', message: `No recipe for '${item_name}' (need crafting table nearby?)` });
+        actionDone();
       } else {
-        bot.craft(recipes[0], count || 1, null)
+        withTimeout(bot.craft(recipes[0], count || 1, null), 15000, 'craft')
           .then(() => {
             send({ event: 'ack', action: 'craft', item_name, count: count || 1 });
           })
           .catch((err) => {
             send({ event: 'error', action: 'craft', message: err.message });
-          });
+          })
+          .finally(() => actionDone());
       }
       break;
     }
@@ -396,14 +599,16 @@ function handleCommand(cmd) {
       const held = bot.heldItem;
       if (!held) {
         send({ event: 'error', action: 'drop', message: 'Not holding any item' });
+        actionDone();
       } else {
-        bot.tossStack(held)
+        withTimeout(bot.tossStack(held), 10000, 'drop')
           .then(() => {
             send({ event: 'ack', action: 'drop', item: held.name, count: held.count });
           })
           .catch((err) => {
             send({ event: 'error', action: 'drop', message: err.message });
-          });
+          })
+          .finally(() => actionDone());
       }
       break;
     }
@@ -412,8 +617,6 @@ function handleCommand(cmd) {
       const range = cmd.range || 16;
       const mcData = require('minecraft-data')(bot.version);
 
-      // Nearby blocks — find all non-air blocks in range, group by type
-      const blockCounts = {};
       const pos = bot.entity.position;
       const cursor = bot.blockAtCursor(5);
 
@@ -449,7 +652,6 @@ function handleCommand(cmd) {
           });
         }
       }
-      // Sort by distance, limit to 15
       entities.sort((a, b) => a.distance - b.distance);
 
       send({
@@ -471,28 +673,29 @@ function handleCommand(cmd) {
       const blockDef = mcData.blocksByName[blockType];
       if (!blockDef) {
         send({ event: 'error', action: 'find_and_dig', message: `Unknown block type: ${blockType}` });
+        actionDone();
         break;
       }
       const found = bot.findBlocks({ matching: blockDef.id, maxDistance: 32, count: 1 });
       if (found.length === 0) {
         send({ event: 'error', action: 'find_and_dig', message: `No ${blockType} found within 32 blocks` });
+        actionDone();
         break;
       }
       const targetPos = found[0];
       const targetBlock = bot.blockAt(targetPos);
       if (!targetBlock) {
         send({ event: 'error', action: 'find_and_dig', message: `Block at ${targetPos} disappeared` });
+        actionDone();
         break;
       }
 
-      // Pathfind to adjacent block, then dig
       if (bot.pathfinder && bot.pathfinder.movements) {
         bot.pathfinder.setGoal(new GoalNear(targetPos.x, targetPos.y, targetPos.z, 2));
-        // Wait for pathfinder to reach goal
-        bot.once('goal_reached', () => {
+        onGoalReached(() => {
           const block = bot.blockAt(targetPos);
           if (block && block.name !== 'air') {
-            bot.dig(block)
+            withTimeout(bot.dig(block), 30000, 'find_and_dig:dig')
               .then(() => {
                 send({ event: 'ack', action: 'find_and_dig', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z });
                 send({ event: 'find_and_dig_done', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z });
@@ -500,25 +703,19 @@ function handleCommand(cmd) {
               .catch(err => {
                 send({ event: 'error', action: 'find_and_dig', message: err.message });
                 send({ event: 'find_and_dig_error', error: err.message });
-              });
+              })
+              .finally(() => actionDone());
           } else {
             send({ event: 'ack', action: 'find_and_dig', block: blockType, message: 'block already gone' });
             send({ event: 'find_and_dig_done', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z });
-          }
-        });
-        // Timeout if pathfinding takes too long
-        setTimeout(() => {
-          if (bot.pathfinder.isMoving()) {
-            bot.pathfinder.setGoal(null);
-            send({ event: 'error', action: 'find_and_dig', message: `Couldn't reach ${blockType} in time` });
-            send({ event: 'find_and_dig_error', error: `Couldn't reach ${blockType} in time` });
+            actionDone();
           }
         }, 15000);
       } else {
         // No pathfinder — try to dig if close enough
         const dist = bot.entity.position.distanceTo(targetPos);
         if (dist <= 5) {
-          bot.dig(targetBlock)
+          withTimeout(bot.dig(targetBlock), 30000, 'find_and_dig:dig')
             .then(() => {
               send({ event: 'ack', action: 'find_and_dig', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z });
               send({ event: 'find_and_dig_done', block: blockType, x: targetPos.x, y: targetPos.y, z: targetPos.z });
@@ -526,25 +723,29 @@ function handleCommand(cmd) {
             .catch(err => {
               send({ event: 'error', action: 'find_and_dig', message: err.message });
               send({ event: 'find_and_dig_error', error: err.message });
-            });
+            })
+            .finally(() => actionDone());
         } else {
           send({ event: 'error', action: 'find_and_dig', message: `${blockType} found at ${targetPos} but too far (${Math.round(dist)} blocks) and no pathfinder` });
           send({ event: 'find_and_dig_error', error: `${blockType} too far and no pathfinder` });
+          actionDone();
         }
       }
       break;
     }
 
     case 'dig_area': {
-      // Dig a rectangular area. Params: x, y, z (corner), width, height, depth
-      // Digs from top-down, layer by layer
       const { x: ax, y: ay, z: az, width: aw, height: ah, depth: ad } = cmd;
+      if (!validCoords(ax, ay, az)) {
+        send({ event: 'error', action: 'dig_area', message: `Invalid coordinates: ${ax}, ${ay}, ${az}` });
+        actionDone();
+        break;
+      }
       const w = Math.min(aw || 5, 20);
       const h = Math.min(ah || 3, 10);
       const d = Math.min(ad || 5, 20);
 
       const blocks = [];
-      // Top-down so bot doesn't fall into holes
       for (let dy = h - 1; dy >= 0; dy--) {
         for (let dx = 0; dx < w; dx++) {
           for (let dz = 0; dz < d; dz++) {
@@ -559,16 +760,17 @@ function handleCommand(cmd) {
       async function digNext(idx) {
         if (digAreaCancelled) {
           send({ event: 'dig_area_cancelled', blocksRemoved: idx });
+          actionDone();
           return;
         }
         if (idx >= blocks.length) {
           send({ event: 'dig_area_done', blocksRemoved: blocks.length });
+          actionDone();
           return;
         }
         const pos = blocks[idx];
         const block = bot.blockAt(new Vec3(pos.x, pos.y, pos.z));
         if (!block || block.name === 'air' || block.name === 'cave_air') {
-          // Skip air blocks
           digNext(idx + 1);
           return;
         }
@@ -578,12 +780,8 @@ function handleCommand(cmd) {
         if (dist > 4.5 && bot.pathfinder && bot.pathfinder.movements) {
           try {
             bot.pathfinder.setGoal(new GoalNear(pos.x, pos.y, pos.z, 3));
-            await new Promise((resolve, reject) => {
-              const timeout = setTimeout(() => {
-                bot.pathfinder.setGoal(null);
-                resolve();
-              }, 10000);
-              bot.once('goal_reached', () => { clearTimeout(timeout); resolve(); });
+            await new Promise((resolve) => {
+              onGoalReached(() => { resolve(); }, 10000);
             });
           } catch (e) {
             log(`dig_area: pathfind error at ${pos.x},${pos.y},${pos.z}: ${e.message}`);
@@ -594,7 +792,7 @@ function handleCommand(cmd) {
         const current = bot.blockAt(new Vec3(pos.x, pos.y, pos.z));
         if (current && current.name !== 'air' && current.name !== 'cave_air') {
           try {
-            await bot.dig(current);
+            await withTimeout(bot.dig(current), 30000, 'dig_area:dig');
           } catch (e) {
             log(`dig_area: dig error at ${pos.x},${pos.y},${pos.z}: ${e.message}`);
           }
@@ -605,7 +803,6 @@ function handleCommand(cmd) {
           send({ event: 'ack', action: 'dig_area', message: `Progress: ${idx + 1}/${blocks.length} blocks` });
         }
 
-        // Continue with next block
         digNext(idx + 1);
       }
 
@@ -613,11 +810,112 @@ function handleCommand(cmd) {
       break;
     }
 
+    // --- New commands (mc-fun-67) ---
+
+    case 'activate_block': {
+      const { x, y, z } = cmd;
+      if (!validCoords(x, y, z)) {
+        send({ event: 'error', action: 'activate_block', message: `Invalid coordinates: ${x}, ${y}, ${z}` });
+        actionDone();
+        break;
+      }
+      const block = bot.blockAt(new Vec3(x, y, z));
+      if (!block) {
+        send({ event: 'error', action: 'activate_block', message: `No block at ${x}, ${y}, ${z}` });
+        actionDone();
+      } else {
+        withTimeout(bot.activateBlock(block), 10000, 'activate_block')
+          .then(() => {
+            send({ event: 'ack', action: 'activate_block', block: block.name, x, y, z });
+          })
+          .catch((err) => {
+            send({ event: 'error', action: 'activate_block', message: err.message });
+          })
+          .finally(() => actionDone());
+      }
+      break;
+    }
+
+    case 'use_item':
+      try {
+        bot.activateItem();
+        send({ event: 'ack', action: 'use_item' });
+      } catch (err) {
+        send({ event: 'error', action: 'use_item', message: err.message });
+      }
+      actionDone();
+      break;
+
+    case 'deactivate_item':
+      try {
+        bot.deactivateItem();
+        send({ event: 'ack', action: 'deactivate_item' });
+      } catch (err) {
+        send({ event: 'error', action: 'deactivate_item', message: err.message });
+      }
+      actionDone();
+      break;
+
+    case 'sleep': {
+      const mcData = require('minecraft-data')(bot.version);
+      const bed = bot.findBlock({
+        matching: id => {
+          const b = mcData.blocks[id];
+          return b && b.name.includes('bed');
+        },
+        maxDistance: 4
+      });
+      if (!bed) {
+        send({ event: 'error', action: 'sleep', message: 'No bed found within 4 blocks' });
+        actionDone();
+      } else {
+        withTimeout(bot.sleep(bed), 10000, 'sleep')
+          .then(() => {
+            send({ event: 'ack', action: 'sleep' });
+          })
+          .catch((err) => {
+            send({ event: 'error', action: 'sleep', message: err.message });
+          })
+          .finally(() => actionDone());
+      }
+      break;
+    }
+
+    case 'wake':
+      try {
+        bot.wake();
+        send({ event: 'ack', action: 'wake' });
+      } catch (err) {
+        send({ event: 'error', action: 'wake', message: err.message });
+      }
+      actionDone();
+      break;
+
+    case 'status':
+      send({
+        event: 'status',
+        pathfinder_moving: (bot.pathfinder && bot.pathfinder.isMoving()) || false,
+        action_busy: actionBusy,
+        queue_length: actionQueue.length,
+        health: bot.health,
+        food: bot.food,
+        position: bot.entity ? { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z } : null,
+        dimension: bot.game && bot.game.dimension,
+        digging: bot.targetDigBlock != null,
+      });
+      break;
+
     case 'stop':
+      // Clean up all pending goal listeners
+      for (const cleanup of [...activeCleanups]) {
+        cleanup();
+      }
+      activeCleanups = [];
       try { bot.pathfinder.stop(); } catch (_) {}
       try { bot.stopDigging(); } catch (_) {}
       bot.clearControlStates();
       digAreaCancelled = true;
+      clearQueue();
       send({ event: 'stopped' });
       break;
 
@@ -628,5 +926,11 @@ function handleCommand(cmd) {
 
     default:
       send({ event: 'error', message: `Unknown action: ${cmd.action}` });
+      if (!SYNC_ACTIONS.has(cmd.action)) actionDone();
   }
 }
+
+// --- Bootstrap ---
+
+log(`Connecting as ${username} to ${host}:${port}`);
+createBot();
