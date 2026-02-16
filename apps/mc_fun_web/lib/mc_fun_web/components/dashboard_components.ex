@@ -192,11 +192,22 @@ defmodule McFunWeb.DashboardComponents do
               </div>
             <% end %>
             <%= if @status.position do %>
-              <div class="flex justify-between">
+              <div class="flex justify-between items-center">
                 <span>POS</span>
-                <span class="text-[#888]">
+                <span class="text-[#888] flex items-center">
                   <%= with {x, y, z} <- @status.position do %>
                     X:<span class="text-[#e0e0e0]">{trunc(x)}</span> Y:<span class="text-[#e0e0e0]">{trunc(y)}</span> Z:<span class="text-[#e0e0e0]">{trunc(z)}</span>
+                    <button
+                      phx-click="use_coords"
+                      phx-value-x={trunc(x)}
+                      phx-value-y={trunc(y)}
+                      phx-value-z={trunc(z)}
+                      phx-value-name={@bot}
+                      class="text-[8px] text-[#00ffff]/60 hover:text-[#00ffff] ml-1"
+                      title="Use coordinates in Display/FX"
+                    >
+                      [USE]
+                    </button>
                   <% end %>
                 </span>
               </div>
@@ -314,11 +325,22 @@ defmodule McFunWeb.DashboardComponents do
         <% end %>
         <%!-- Position --%>
         <%= if @data.position do %>
-          <div class="flex justify-between">
+          <div class="flex justify-between items-center">
             <span>POS</span>
-            <span class="text-[#888]">
+            <span class="text-[#888] flex items-center">
               <%= with {x, y, z} <- @data.position do %>
                 X:<span class="text-[#e0e0e0]">{trunc(x)}</span> Y:<span class="text-[#e0e0e0]">{trunc(y)}</span> Z:<span class="text-[#e0e0e0]">{trunc(z)}</span>
+                <button
+                  phx-click="use_coords"
+                  phx-value-x={trunc(x)}
+                  phx-value-y={trunc(y)}
+                  phx-value-z={trunc(z)}
+                  phx-value-name={@name}
+                  class="text-[8px] text-[#00ffff]/60 hover:text-[#00ffff] ml-1"
+                  title="Use coordinates in Display/FX"
+                >
+                  [USE]
+                </button>
               <% end %>
             </span>
           </div>
@@ -349,7 +371,12 @@ defmodule McFunWeb.DashboardComponents do
 
   def bot_config_modal(assigns) do
     ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/70" role="dialog" aria-modal="true" aria-label={"Configure #{@bot}"}>
+    <div
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+      role="dialog"
+      aria-modal="true"
+      aria-label={"Configure #{@bot}"}
+    >
       <div class="fixed inset-0" phx-click="close_bot_config"></div>
       <div class="relative z-10 w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-[#0d0d14] border-2 border-[#00ffff]/40 shadow-[0_0_30px_rgba(0,255,255,0.15)]">
         <%!-- Modal header --%>
@@ -365,7 +392,11 @@ defmodule McFunWeb.DashboardComponents do
         </div>
 
         <%!-- Modal tabs --%>
-        <div class="flex border-b border-[#222]" role="tablist" aria-label="Bot configuration sections">
+        <div
+          class="flex border-b border-[#222]"
+          role="tablist"
+          aria-label="Bot configuration sections"
+        >
           <button
             :for={{id, label} <- [{"llm", "LLM"}, {"behavior", "BEHAVIOR"}, {"actions", "ACTIONS"}]}
             role="tab"

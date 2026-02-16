@@ -32,11 +32,19 @@ const Hooks = {
       this.history = []
       this.historyIndex = -1
       this.draft = ""
+      this.lastCommand = ""
       const input = this.el.querySelector("input[name='command']")
       if (!input) return
 
       input.addEventListener("keydown", (e) => {
-        if (e.key === "ArrowUp") {
+        if (e.key === "Tab") {
+          // Tab to repeat last command
+          if (input.value.trim() === "" && this.lastCommand) {
+            e.preventDefault()
+            input.value = this.lastCommand
+            this.pushEvent("rcon_input", {command: input.value})
+          }
+        } else if (e.key === "ArrowUp") {
           e.preventDefault()
           if (this.historyIndex === -1) this.draft = input.value
           if (this.historyIndex < this.history.length - 1) {
@@ -60,9 +68,12 @@ const Hooks = {
 
       this.el.addEventListener("submit", () => {
         const cmd = input.value.trim()
-        if (cmd && (this.history.length === 0 || this.history[0] !== cmd)) {
-          this.history.unshift(cmd)
-          if (this.history.length > 50) this.history.pop()
+        if (cmd) {
+          this.lastCommand = cmd
+          if (this.history.length === 0 || this.history[0] !== cmd) {
+            this.history.unshift(cmd)
+            if (this.history.length > 50) this.history.pop()
+          }
         }
         this.historyIndex = -1
         this.draft = ""

@@ -49,6 +49,7 @@ defmodule McFunWeb.DashboardLive do
         rcon_status: check_rcon(),
         active_tab: "bots",
         sidebar_open: true,
+        rcon_quick_open: false,
         # Bot config modal
         selected_bot: nil,
         modal_tab: "llm"
@@ -392,6 +393,93 @@ defmodule McFunWeb.DashboardLive do
     {:noreply, assign(socket, effect_target: target)}
   end
 
+  def handle_event("pick_effect_target", %{"target" => target}, socket) do
+    {:noreply, assign(socket, effect_target: target)}
+  end
+
+  # --- Coord Sharing ---
+
+  def handle_event("use_coords", %{"x" => x, "y" => y, "z" => z, "name" => name}, socket) do
+    {:noreply,
+     assign(socket,
+       display_x: x,
+       display_y: y,
+       display_z: z,
+       effect_target: name
+     )}
+  end
+
+  # --- Display Entity Picker ---
+
+  def handle_event("pick_display_entity", %{"entity" => ""}, socket), do: {:noreply, socket}
+
+  def handle_event("pick_display_entity", %{"entity" => name}, socket) do
+    case lookup_entity_position(socket.assigns, name) do
+      {x, y, z} ->
+        {:noreply,
+         assign(socket,
+           display_x: to_string(trunc(x)),
+           display_y: to_string(trunc(y)),
+           display_z: to_string(trunc(z))
+         )}
+
+      nil ->
+        {:noreply, socket}
+    end
+  end
+
+  # --- RCON Quick Commands ---
+
+  def handle_event("toggle_rcon_quick", _params, socket) do
+    {:noreply, assign(socket, rcon_quick_open: !socket.assigns.rcon_quick_open)}
+  end
+
+  def handle_event("rcon_quick", %{"cmd" => "say", "message" => msg}, socket) do
+    run_rcon(socket, "say #{msg}")
+  end
+
+  def handle_event("rcon_quick", %{"cmd" => "give"} = p, socket) do
+    count = if p["count"] != "", do: p["count"], else: "1"
+    run_rcon(socket, "give #{p["target"]} #{p["item"]} #{count}")
+  end
+
+  def handle_event("rcon_quick", %{"cmd" => "tp_coords"} = p, socket) do
+    run_rcon(socket, "tp #{p["target"]} #{p["x"]} #{p["y"]} #{p["z"]}")
+  end
+
+  def handle_event("rcon_quick", %{"cmd" => "tp_entity"} = p, socket) do
+    run_rcon(socket, "tp #{p["target"]} #{p["destination"]}")
+  end
+
+  def handle_event("rcon_quick", %{"cmd" => "time", "value" => val}, socket) do
+    run_rcon(socket, "time set #{val}")
+  end
+
+  def handle_event("rcon_quick", %{"cmd" => "weather", "value" => val}, socket) do
+    run_rcon(socket, "weather #{val}")
+  end
+
+  def handle_event("rcon_quick", %{"cmd" => "gamemode"} = p, socket) do
+    run_rcon(socket, "gamemode #{p["mode"]} #{p["target"]}")
+  end
+
+  def handle_event("rcon_quick", %{"cmd" => "effect"} = p, socket) do
+    dur = if p["duration"] != "", do: p["duration"], else: "30"
+    amp = if p["amplifier"] != "", do: p["amplifier"], else: "0"
+    run_rcon(socket, "effect give #{p["target"]} #{p["effect"]} #{dur} #{amp}")
+  end
+
+  def handle_event("rcon_quick", %{"cmd" => "heal"} = p, socket) do
+    target = p["target"]
+
+    run_rcon_multi(socket, [
+      "effect give #{target} instant_health 1 255",
+      "effect give #{target} saturation 1 255"
+    ])
+  end
+
+  def handle_event("rcon_quick", _, socket), do: {:noreply, socket}
+
   # --- Display ---
 
   def handle_event("place_text", params, socket) do
@@ -717,6 +805,61 @@ defmodule McFunWeb.DashboardLive do
       [{pid, _}] -> DynamicSupervisor.terminate_child(McFun.BotSupervisor, pid)
       [] -> :ok
     end
+  end
+
+  defp run_rcon(socket, cmd) do
+    lv = self()
+
+    Task.start(fn ->
+      result =
+        case McFun.Rcon.command(cmd) do
+          {:ok, r} -> r
+          {:error, r} -> "ERR: #{inspect(r)}"
+        end
+
+      send(lv, {:rcon_result, cmd, result})
+    end)
+
+    {:noreply, socket}
+  end
+
+  defp run_rcon_multi(socket, commands) do
+    lv = self()
+
+    Task.start(fn ->
+      Enum.each(commands, &exec_and_report_rcon(&1, lv))
+    end)
+
+    {:noreply, socket}
+  end
+
+  defp exec_and_report_rcon(cmd, lv) do
+    result =
+      case McFun.Rcon.command(cmd) do
+        {:ok, r} -> r
+        {:error, r} -> "ERR: #{inspect(r)}"
+      end
+
+    send(lv, {:rcon_result, cmd, result})
+  end
+
+  defp lookup_entity_position(assigns, name) do
+    case get_in(assigns, [:bot_statuses, name, :position]) do
+      {_, _, _} = pos ->
+        pos
+
+      _ ->
+        case get_in(assigns, [:player_statuses, name, :position]) do
+          {_, _, _} = pos -> pos
+          _ -> nil
+        end
+    end
+  end
+
+  defp entity_options(bots, player_statuses) do
+    selectors = ["@a", "@p", "@r"]
+    players = Map.keys(player_statuses)
+    selectors ++ bots ++ (players -- bots)
   end
 
   # --- Render Helpers (used by dashboard_live.html.heex) ---

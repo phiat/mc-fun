@@ -158,9 +158,7 @@ defmodule McFun.ChatBot do
           execute_tool(bot_name, name, args, username)
         catch
           kind, reason ->
-            Logger.warning(
-              "ChatBot #{bot_name}: tool #{name} failed: #{kind} #{inspect(reason)}"
-            )
+            Logger.warning("ChatBot #{bot_name}: tool #{name} failed: #{kind} #{inspect(reason)}")
         end
       end
     end)
