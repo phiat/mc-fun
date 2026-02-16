@@ -24,8 +24,10 @@ mc_fun/
 │   ├── rcon.ex                  # RCON GenServer (crashes on auth fail — intentional)
 │   ├── bot.ex                   # Mineflayer bot via Erlang Port + bridge.js (JSON over stdin/stdout)
 │   ├── chat_bot.ex              # LLM chat — !ask/!model/!models/!personality/!reset/!tp
+│   ├── action_parser.ex          # Regex-based LLM response → bot action translator
 │   ├── bot_behaviors.ex         # Patrol/follow/guard behaviors (1s tick GenServers)
 │   ├── bot_supervisor.ex        # DynamicSupervisor wrapper for bots
+│   ├── presets.ex               # 22 bot personality presets across 6 categories
 │   ├── log_watcher.ex           # RCON-polling log watcher (no local log file)
 │   ├── events.ex                # PubSub event system
 │   ├── events/handlers.ex       # Default event handler registration
@@ -81,6 +83,11 @@ After start: `McFun.Events.Handlers.register_all()` registers default event hand
 - **Bot ↔ bridge.js protocol**: Newline-delimited JSON over stdin/stdout. Bot sends commands as JSON, bridge.js sends events back.
 - **ChatBot commands**: `!ask` (LLM query, rate-limited 2s), `!model`/`!models`, `!personality`, `!reset`, `!tp`. Whispers always trigger LLM response.
 - **BotBehaviors**: One behavior per bot. Starting a new one stops the old. Tick-based (1s interval).
+- **ActionParser**: Regex patterns on LLM response text → list of `{action, params}` tuples → executed via Bot API. Runs after every LLM response in ChatBot.
+- **Bot status polling**: Bot.ex polls bridge for position every 5s, tracks health/food/dimension from events.
+- **Presets**: `McFun.Presets.all/0`, `by_category/0`, `get/1`. 22 presets in 6 categories.
+- **Bot actions in bridge.js**: dig, dig_looking_at, place, equip, craft, drop, goto, follow, jump, sneak, attack, move, look, chat, whisper, inventory, position, players, quit.
+- **Pathfinder**: mineflayer-pathfinder loaded on spawn, falls back to simple movement if init fails.
 
 ## Environment
 
