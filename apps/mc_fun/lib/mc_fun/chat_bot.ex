@@ -28,6 +28,9 @@ defmodule McFun.ChatBot do
   @fallback_model "openai/gpt-oss-20b"
 
   @heartbeat_initial_delay_ms 5_000
+  @bot_chat_max_exchanges 3
+  @bot_chat_cooldown_ms 60_000
+  @bot_chat_proximity 32
 
   @heartbeat_prompts [
     "What are you doing right now? Give a quick update.",
@@ -50,7 +53,9 @@ defmodule McFun.ChatBot do
     heartbeat_ref: nil,
     last_heartbeat: nil,
     heartbeat_enabled: true,
-    last_message: nil
+    last_message: nil,
+    bot_chat_counts: %{},
+    bot_chat_cooldowns: %{}
   ]
 
   # Client API
@@ -458,8 +463,14 @@ defmodule McFun.ChatBot do
     end
   end
 
-  # Regular chat without prefix — ignore
-  defp handle_message(state, _username, _message, :chat), do: state
+  # Regular chat from another bot — respond if nearby and within exchange limit
+  defp handle_message(state, username, message, :chat) do
+    if bot_nearby?(state.bot_name, username) and not heartbeat_message?(message) do
+      handle_bot_chat(state, username, message)
+    else
+      state
+    end
+  end
 
   # LLM interaction
 
@@ -555,6 +566,81 @@ defmodule McFun.ChatBot do
       end
 
     %{state | conversations: conversations, last_active: last_active}
+  end
+
+  # Bot-to-bot chat
+
+  defp bot_nearby?(my_name, other_name) do
+    known_bots = McFun.BotSupervisor.list_bots()
+
+    if other_name in known_bots do
+      case {McFun.Bot.status(my_name), McFun.Bot.status(other_name)} do
+        {%{position: {x1, y1, z1}}, %{position: {x2, y2, z2}}}
+        when is_number(x1) and is_number(x2) ->
+          distance = :math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2 + (z2 - z1) ** 2)
+          distance <= @bot_chat_proximity
+
+        _ ->
+          false
+      end
+    else
+      false
+    end
+  rescue
+    _ -> false
+  end
+
+  defp heartbeat_message?(message) do
+    Enum.any?(@heartbeat_prompts, &String.contains?(message, &1))
+  end
+
+  defp handle_bot_chat(state, bot_name, message) do
+    now = System.monotonic_time(:millisecond)
+
+    case bot_chat_status(state, bot_name, now) do
+      :cooldown ->
+        Logger.debug("ChatBot #{state.bot_name}: bot-chat with #{bot_name} on cooldown")
+        state
+
+      :limit_reached ->
+        Logger.info("ChatBot #{state.bot_name}: bot-chat limit with #{bot_name}, cooling down")
+
+        %{
+          state
+          | bot_chat_counts: Map.put(state.bot_chat_counts, bot_name, 0),
+            bot_chat_cooldowns:
+              Map.put(state.bot_chat_cooldowns, bot_name, now + @bot_chat_cooldown_ms)
+        }
+
+      :rate_limited ->
+        state
+
+      {:ok, count} ->
+        Logger.info(
+          "ChatBot #{state.bot_name}: responding to nearby bot #{bot_name} (#{count + 1}/#{@bot_chat_max_exchanges})"
+        )
+
+        state = add_to_history(state, bot_name, message)
+        spawn_response(state, bot_name)
+
+        %{
+          state
+          | last_response: now,
+            bot_chat_counts: Map.put(state.bot_chat_counts, bot_name, count + 1)
+        }
+    end
+  end
+
+  defp bot_chat_status(state, bot_name, now) do
+    cooldown_until = Map.get(state.bot_chat_cooldowns, bot_name, 0)
+    count = Map.get(state.bot_chat_counts, bot_name, 0)
+
+    cond do
+      now < cooldown_until -> :cooldown
+      count >= @bot_chat_max_exchanges -> :limit_reached
+      rate_limited?(state, now) -> :rate_limited
+      true -> {:ok, count}
+    end
   end
 
   # Strip chain-of-thought from reasoning models.
