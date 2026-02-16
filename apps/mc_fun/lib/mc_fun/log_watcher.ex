@@ -176,16 +176,17 @@ defmodule McFun.LogWatcher do
   defp fetch_single_player_data(player) do
     case McFun.Rcon.command("execute as #{player} run data get entity @s") do
       {:ok, response} ->
-        data = parse_entity_data(response)
+        case McFun.SNBT.parse_entity_response(response) do
+          {:ok, data} when is_map(data) ->
+            extract_player_fields(data)
 
-        if data.health == nil and data.position == nil do
-          Logger.warning(
-            "LogWatcher: failed to parse entity data for #{player}: #{String.slice(response, 0, 200)}"
-          )
+          {:error, :truncated} ->
+            # RCON truncated the full entity blob — fall back to per-field queries
+            fetch_player_data_fields(player)
 
-          fetch_player_data_fields(player)
-        else
-          data
+          {:error, reason} ->
+            Logger.warning("LogWatcher: SNBT parse failed for #{player}: #{inspect(reason)}")
+            fetch_player_data_fields(player)
         end
 
       {:error, reason} ->
@@ -204,80 +205,43 @@ defmodule McFun.LogWatcher do
 
     Enum.reduce(fields, %{health: nil, food: nil, position: nil, dimension: nil}, fn {key, cmd},
                                                                                      acc ->
-      case McFun.Rcon.command(cmd) do
-        {:ok, response} ->
-          value = parse_field(key, response)
-          Map.put(acc, key, value)
-
-        {:error, reason} ->
-          Logger.warning(
-            "LogWatcher: field query #{key} failed for #{player}: #{inspect(reason)}"
-          )
-
-          acc
-      end
+      fetch_single_field(player, key, cmd, acc)
     end)
   end
 
-  defp parse_field(:health, response), do: parse_nbt_float(response, ~r/(-?[\d.]+)f?$/)
-  defp parse_field(:food, response), do: parse_nbt_int(response, ~r/(\d+)$/)
+  defp fetch_single_field(player, key, cmd, acc) do
+    case McFun.Rcon.command(cmd) do
+      {:ok, response} ->
+        case McFun.SNBT.parse_entity_response(response) do
+          {:ok, value} -> Map.put(acc, key, coerce_field(key, value))
+          {:error, _} -> acc
+        end
 
-  defp parse_field(:position, response) do
-    parse_nbt_position(response) ||
-      case Regex.run(~r/\[([-\d.]+)d?,\s*([-\d.]+)d?,\s*([-\d.]+)d?\]/, response) do
-        [_, x, y, z] -> {safe_float(x), safe_float(y), safe_float(z)}
-        nil -> nil
-      end
+      {:error, reason} ->
+        Logger.warning("LogWatcher: field query #{key} failed for #{player}: #{inspect(reason)}")
+        acc
+    end
   end
 
-  defp parse_field(:dimension, response) do
-    parse_nbt_match(response, ~r/"minecraft:(\w+)"/) ||
-      parse_nbt_match(response, ~r/minecraft:(\w+)/)
-  end
-
-  defp parse_entity_data(response) do
+  defp extract_player_fields(data) do
     %{
-      health: parse_nbt_float(response, ~r/Health:([\d.]+)f/),
-      food: parse_nbt_int(response, ~r/foodLevel:(\d+)/),
-      position: parse_nbt_position(response),
-      dimension: parse_nbt_match(response, ~r/Dimension:"minecraft:(\w+)"/)
+      health: data["Health"],
+      food: data["foodLevel"],
+      position: coerce_pos(data["Pos"]),
+      dimension: coerce_dimension(data["Dimension"])
     }
   end
 
-  defp parse_nbt_float(response, regex) do
-    case Regex.run(regex, response) do
-      [_, val] -> String.to_float(val)
-      nil -> nil
-    end
-  end
+  defp coerce_field(:position, value), do: coerce_pos(value)
+  defp coerce_field(:dimension, value), do: coerce_dimension(value)
+  defp coerce_field(_key, value), do: value
 
-  defp parse_nbt_int(response, regex) do
-    case Regex.run(regex, response) do
-      [_, val] -> String.to_integer(val)
-      nil -> nil
-    end
-  end
+  defp coerce_pos([x, y, z]), do: {x, y, z}
+  defp coerce_pos(_), do: nil
 
-  defp parse_nbt_match(response, regex) do
-    case Regex.run(regex, response) do
-      [_, val] -> val
-      nil -> nil
-    end
-  end
-
-  defp parse_nbt_position(response) do
-    case Regex.run(~r/Pos:\s*\[([-\d.]+)d?,\s*([-\d.]+)d?,\s*([-\d.]+)d?\]/, response) do
-      [_, x, y, z] -> {safe_float(x), safe_float(y), safe_float(z)}
-      nil -> nil
-    end
-  end
-
-  defp safe_float(str) do
-    case Float.parse(str) do
-      {f, _} -> f
-      :error -> 0.0
-    end
-  end
+  defp coerce_dimension("minecraft:" <> dim), do: dim
+  defp coerce_dimension(dim) when is_binary(dim), do: dim
+  defp coerce_dimension(_), do: nil
 
   @doc false
   def parse_player_list(response) do
