@@ -143,24 +143,27 @@ defmodule McFun.ChatBot do
 
     broadcast_llm_event(state.bot_name, username, response, tools_str)
 
-    # Send cleaned reply to chat
-    if reply != "" do
-      send_paginated(state.bot_name, reply)
-    end
+    # Send chat and execute tools asynchronously to avoid blocking ChatBot
+    bot_name = state.bot_name
 
-    # Execute tool calls
-    for %{name: name, args: args} <- tool_calls do
-      Logger.info("ChatBot #{state.bot_name}: tool call #{name}(#{inspect(args)})")
-
-      try do
-        execute_tool(state.bot_name, name, args, username)
-      catch
-        kind, reason ->
-          Logger.warning(
-            "ChatBot #{state.bot_name}: tool #{name} failed: #{kind} #{inspect(reason)}"
-          )
+    Task.start(fn ->
+      if reply != "" do
+        send_paginated(bot_name, reply)
       end
-    end
+
+      for %{name: name, args: args} <- tool_calls do
+        Logger.info("ChatBot #{bot_name}: tool call #{name}(#{inspect(args)})")
+
+        try do
+          execute_tool(bot_name, name, args, username)
+        catch
+          kind, reason ->
+            Logger.warning(
+              "ChatBot #{bot_name}: tool #{name} failed: #{kind} #{inspect(reason)}"
+            )
+        end
+      end
+    end)
 
     state = add_bot_response(state, username, response)
     {:noreply, state}
@@ -172,19 +175,30 @@ defmodule McFun.ChatBot do
     reply = strip_thinking(response)
 
     # Fallback: regex-based action parsing for models without tool support
-    actions =
-      case McFun.ActionParser.parse(reply, username) do
+    parsed_actions = McFun.ActionParser.parse(reply, username)
+
+    actions_str =
+      case parsed_actions do
         [] ->
           nil
 
         actions ->
           Logger.info("ChatBot #{state.bot_name}: regex fallback actions #{inspect(actions)}")
-          McFun.ActionParser.execute(actions, state.bot_name)
           Enum.map_join(actions, ", ", fn {action, _} -> to_string(action) end)
       end
 
-    broadcast_llm_event(state.bot_name, username, response, actions)
-    send_paginated(state.bot_name, reply)
+    broadcast_llm_event(state.bot_name, username, response, actions_str)
+
+    # Send chat and execute actions asynchronously to avoid blocking ChatBot
+    bot_name = state.bot_name
+
+    Task.start(fn ->
+      send_paginated(bot_name, reply)
+
+      if parsed_actions != [] do
+        McFun.ActionParser.execute(parsed_actions, bot_name)
+      end
+    end)
 
     state = add_bot_response(state, username, response)
     {:noreply, state}
