@@ -26,7 +26,7 @@ config :mc_fun, :groq,
 
 # Log watcher
 config :mc_fun, :log_watcher,
-  log_path: Map.get(env, "MC_LOG_PATH", "./data/logs/latest.log"),
+  log_path: Map.get(env, "MC_LOG_PATH"),
   poll_interval: String.to_integer(Map.get(env, "LOG_POLL_INTERVAL_MS", "2000"))
 
 # Webhook security (optional)

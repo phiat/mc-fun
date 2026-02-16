@@ -135,6 +135,8 @@ defmodule Mix.Tasks.Mc.Status do
   @impl true
   def run(_args) do
     Mix.Task.run("app.start")
+    # Wait for LogWatcher's first RCON poll to complete
+    Process.sleep(3_000)
     shell = Mix.shell()
 
     check_rcon(shell)
