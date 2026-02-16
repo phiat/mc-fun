@@ -132,13 +132,15 @@ defmodule McFun.ChatBot do
   # LLM response with tool calls
   @impl true
   def handle_info({:llm_response, username, {:ok, response, tool_calls}}, state) do
-    # Broadcast to dashboard
+    reply = strip_thinking(response)
+
+    # Broadcast to dashboard (full response for debugging)
     tools_str = Enum.map_join(tool_calls, ", ", fn %{name: n, args: a} -> "#{n}(#{inspect(a)})" end)
     broadcast_llm_event(state.bot_name, username, response, tools_str)
 
-    # Send text reply (if any) to chat
-    if response != "" do
-      send_paginated(state.bot_name, response)
+    # Send cleaned reply to chat
+    if reply != "" do
+      send_paginated(state.bot_name, reply)
     end
 
     # Execute tool calls
@@ -154,9 +156,11 @@ defmodule McFun.ChatBot do
   # LLM response text only (no tool calls) — fall back to regex parser
   @impl true
   def handle_info({:llm_response, username, {:ok, response}}, state) do
+    reply = strip_thinking(response)
+
     # Fallback: regex-based action parsing for models without tool support
     actions =
-      case McFun.ActionParser.parse(response, username) do
+      case McFun.ActionParser.parse(reply, username) do
         [] -> nil
         actions ->
           Logger.info("ChatBot #{state.bot_name}: regex fallback actions #{inspect(actions)}")
@@ -165,7 +169,7 @@ defmodule McFun.ChatBot do
       end
 
     broadcast_llm_event(state.bot_name, username, response, actions)
-    send_paginated(state.bot_name, response)
+    send_paginated(state.bot_name, reply)
 
     state = add_bot_response(state, username, response)
     {:noreply, state}
@@ -313,7 +317,7 @@ defmodule McFun.ChatBot do
 
       result =
         McFun.LLM.Groq.chat(system_prompt, messages,
-          max_tokens: 150,
+          max_tokens: max_tokens_for(model),
           model: model,
           tools: tools
         )
@@ -365,6 +369,31 @@ defmodule McFun.ChatBot do
       end
 
     %{state | conversations: conversations, last_active: last_active}
+  end
+
+  # Strip chain-of-thought from reasoning models.
+  # Expects "REPLY: actual message" format; falls back to last sentence if no marker.
+  defp strip_thinking(text) do
+    cond do
+      # Explicit REPLY: marker
+      String.contains?(text, "REPLY:") ->
+        text
+        |> String.split("REPLY:")
+        |> List.last()
+        |> String.trim()
+
+      # Looks like thinking (starts with analysis of the request)
+      Regex.match?(~r/^(The |We |User|They |I need|Let me|So |OK )/i, String.trim(text)) ->
+        # Try to find the actual response after the thinking
+        # Often it's the last quoted string or sentence after reasoning
+        case Regex.run(~r/["""]([^"""]+)["""]/, text) do
+          [_, quoted] -> String.trim(quoted)
+          nil -> text
+        end
+
+      true ->
+        text
+    end
   end
 
   defp send_paginated(bot_name, text) do
@@ -477,6 +506,14 @@ defmodule McFun.ChatBot do
 
   defp supports_tools?(model_id) do
     Enum.any?(@tool_capable_prefixes, &String.starts_with?(model_id, &1))
+  end
+
+  # Reasoning models need more tokens for chain-of-thought
+  defp max_tokens_for(model_id) do
+    case McFun.LLM.ModelCache.get_model(model_id) do
+      {:ok, %{"max_completion_tokens" => max}} -> min(max, 1024)
+      _ -> 512
+    end
   end
 
   # Tool calling
@@ -611,6 +648,9 @@ defmodule McFun.ChatBot do
   defp action_instructions(true = _use_tools) do
     """
     You control a real bot. When a player asks you to do something physical, use the appropriate tool. IMPORTANT: You MUST always include a text response in addition to any tool calls — never return only a tool call with no message. Available tools: goto_player, follow_player, dig, find_and_dig, dig_area (width/height/depth for rooms/tunnels), jump, attack, drop, sneak, craft, equip.
+
+    CRITICAL: Your response MUST start with "REPLY:" followed by your chat message. Do NOT include any thinking, reasoning, or analysis. Only output what the player should see.
+    Example: REPLY: Sure thing, I'll dig that for you!
     """
   end
 
@@ -630,6 +670,9 @@ defmodule McFun.ChatBot do
     "I'll equip [item]" → equip an item
 
     If a player asks you to do something physical, ALWAYS include the trigger phrase.
+
+    CRITICAL: Your response MUST start with "REPLY:" followed by your chat message. Do NOT include any thinking, reasoning, or analysis. Only output what the player should see.
+    Example: REPLY: On my way, I'll dig that block!
     """
   end
 

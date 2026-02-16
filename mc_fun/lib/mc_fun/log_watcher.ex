@@ -56,7 +56,8 @@ defmodule McFun.LogWatcher do
       last_size: 0,
       poll_interval: poll_interval,
       mode: :rcon,
-      online_players: MapSet.new()
+      online_players: MapSet.new(),
+      first_poll: true
     }
 
     # Try local log file first, fall back to RCON polling
@@ -89,6 +90,20 @@ defmodule McFun.LogWatcher do
   def handle_info(_msg, state), do: {:noreply, state}
 
   # RCON-based polling
+
+  defp poll_rcon(%{first_poll: true} = state) do
+    # First poll: populate player set without firing join events
+    case McFun.Rcon.command("list") do
+      {:ok, response} ->
+        current_set = response |> parse_player_list() |> MapSet.new()
+        Logger.info("LogWatcher: initial poll found #{MapSet.size(current_set)} players online")
+        %{state | online_players: current_set, first_poll: false}
+
+      {:error, reason} ->
+        Logger.debug("LogWatcher RCON poll failed: #{inspect(reason)}")
+        %{state | first_poll: false}
+    end
+  end
 
   defp poll_rcon(state) do
     case McFun.Rcon.command("list") do
