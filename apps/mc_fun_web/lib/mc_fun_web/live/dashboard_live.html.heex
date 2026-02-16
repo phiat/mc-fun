@@ -70,69 +70,16 @@
 
   <div class="max-w-7xl mx-auto p-4">
     <%!-- ==================== UNITS TAB ==================== --%>
-    <div :if={@active_tab == "bots"} id="panel-bots" role="tabpanel" class="space-y-4">
-      <%!-- Deploy Panel --%>
-      <McFunWeb.DashboardComponents.deploy_panel
-        selected_model={@selected_model}
-        selected_preset={@selected_preset}
-        deploy_personality={@deploy_personality}
-        available_models={@available_models}
-        bot_spawn_name={@bot_spawn_name}
-      />
-
-      <%!-- Active Units --%>
-      <div class="border-2 border-[#333]/50 bg-[#0d0d14] p-4">
-        <div class="flex items-center justify-between mb-3">
-          <div class="text-[10px] tracking-widest text-[#888]">
-            ACTIVE UNITS <span class="text-[#00ffff]">[{length(@bots)}]</span>
-          </div>
-        </div>
-
-        <div :if={@bots == []} class="text-center py-8 text-[#333] text-xs">
-          NO UNITS DEPLOYED
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          <McFunWeb.DashboardComponents.bot_card
-            :for={bot <- @bots}
-            bot={bot}
-            status={@bot_statuses[bot]}
-            online_players={@online_players}
-            available_models={@available_models}
-          />
-        </div>
-      </div>
-
-      <%!-- Commands reference --%>
-      <div class="border border-[#222] bg-[#0d0d14] p-4">
-        <div class="text-[10px] tracking-widest text-[#666] mb-2">COMMAND REFERENCE</div>
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-[11px]">
-          <div>
-            <span class="text-[#00ffff]">!ask</span>
-            <span class="text-[#666]">&lt;question&gt;</span>
-          </div>
-          <div>
-            <span class="text-[#00ffff]">/msg Bot</span>
-            <span class="text-[#666]">&lt;text&gt;</span>
-          </div>
-          <div>
-            <span class="text-[#00ffff]">!models</span>
-            <span class="text-[#666]">list models</span>
-          </div>
-          <div>
-            <span class="text-[#00ffff]">!model</span> <span class="text-[#666]">&lt;id&gt;</span>
-          </div>
-          <div>
-            <span class="text-[#00ffff]">!personality</span>
-            <span class="text-[#666]">&lt;text&gt;</span>
-          </div>
-          <div>
-            <span class="text-[#00ffff]">!reset</span>
-            <span class="text-[#666]">clear history</span>
-          </div>
-        </div>
-      </div>
-    </div>
+    <.live_component
+      :if={@active_tab == "bots"}
+      module={McFunWeb.UnitsPanelLive}
+      id="units-panel"
+      bots={@bots}
+      bot_statuses={@bot_statuses}
+      online_players={@online_players}
+      available_models={@available_models}
+      parent_pid={self()}
+    />
 
     <%!-- ==================== PLAYERS TAB ==================== --%>
     <div :if={@active_tab == "players"} id="panel-players" role="tabpanel" class="space-y-4">

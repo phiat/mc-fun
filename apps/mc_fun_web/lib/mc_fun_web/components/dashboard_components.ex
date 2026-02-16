@@ -12,13 +12,14 @@ defmodule McFunWeb.DashboardComponents do
   attr :deploy_personality, :string, required: true
   attr :available_models, :list, required: true
   attr :bot_spawn_name, :string, default: ""
+  attr :target, :any, default: nil
 
   def deploy_panel(assigns) do
     ~H"""
     <div class="border-2 border-[#00ffff]/20 bg-[#0d0d14] p-4">
       <div class="text-[10px] tracking-widest text-[#00ffff]/60 mb-3">DEPLOY CONFIGURATION</div>
 
-      <form phx-submit="deploy_bot" class="space-y-3">
+      <form phx-submit="deploy_bot" phx-target={@target} class="space-y-3">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <%!-- Bot name --%>
           <div>
@@ -28,6 +29,7 @@ defmodule McFunWeb.DashboardComponents do
               name="name"
               value={@bot_spawn_name}
               phx-change="bot_name_input"
+              phx-target={@target}
               phx-debounce="300"
               placeholder="McFunBot"
               class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
@@ -41,6 +43,7 @@ defmodule McFunWeb.DashboardComponents do
               id="deploy-model-select"
               class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none focus:shadow-[0_0_8px_rgba(0,255,255,0.2)]"
               phx-change="select_model"
+              phx-target={@target}
               name="model"
               value={@selected_model}
             >
@@ -64,6 +67,7 @@ defmodule McFunWeb.DashboardComponents do
               id="deploy-preset-select"
               class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none focus:shadow-[0_0_8px_rgba(0,255,255,0.2)]"
               phx-change="select_preset"
+              phx-target={@target}
               name="preset"
               value={@selected_preset || "custom"}
             >
@@ -85,6 +89,7 @@ defmodule McFunWeb.DashboardComponents do
           <textarea
             id="deploy-personality-text"
             phx-change="update_deploy_personality"
+            phx-target={@target}
             name="personality"
             phx-debounce="500"
             rows="3"
@@ -96,6 +101,7 @@ defmodule McFunWeb.DashboardComponents do
         <div class="flex items-center justify-between">
           <button
             type="submit"
+            phx-target={@target}
             phx-disable-with="DEPLOYING..."
             class="py-2 px-6 border-2 border-[#00ff88] text-[#00ff88] font-bold text-xs tracking-widest hover:bg-[#00ff88] hover:text-[#0a0a0f] transition-all"
           >
@@ -114,6 +120,7 @@ defmodule McFunWeb.DashboardComponents do
   attr :status, :map, default: nil
   attr :online_players, :list, default: []
   attr :available_models, :list, default: []
+  attr :target, :any, default: nil
 
   def bot_card(assigns) do
     ~H"""
@@ -133,6 +140,7 @@ defmodule McFunWeb.DashboardComponents do
         <div class="flex items-center gap-2">
           <button
             phx-click="open_bot_config"
+            phx-target={@target}
             phx-value-bot={@bot}
             class="text-[#00ffff]/50 hover:text-[#00ffff] text-[10px] tracking-widest opacity-0 group-hover:opacity-100 transition-opacity"
           >
@@ -140,6 +148,7 @@ defmodule McFunWeb.DashboardComponents do
           </button>
           <button
             phx-click="stop_bot"
+            phx-target={@target}
             phx-value-name={@bot}
             class="text-[#ff4444]/50 hover:text-[#ff4444] text-xs opacity-0 group-hover:opacity-100 transition-opacity"
           >
@@ -199,6 +208,7 @@ defmodule McFunWeb.DashboardComponents do
                     X:<span class="text-[#e0e0e0]">{trunc(x)}</span> Y:<span class="text-[#e0e0e0]">{trunc(y)}</span> Z:<span class="text-[#e0e0e0]">{trunc(z)}</span>
                     <button
                       phx-click="use_coords"
+                      phx-target={@target}
                       phx-value-x={trunc(x)}
                       phx-value-y={trunc(y)}
                       phx-value-z={trunc(z)}
@@ -224,6 +234,7 @@ defmodule McFunWeb.DashboardComponents do
                 id={"model-select-#{@bot}"}
                 class="w-full bg-[#0a0a0f] border border-[#333] text-[#aaa] px-2 py-1 text-[10px] focus:border-[#00ffff] focus:outline-none"
                 phx-change="change_bot_model"
+                phx-target={@target}
                 name="model"
                 phx-value-bot={@bot}
                 value={@status.model}
@@ -243,6 +254,7 @@ defmodule McFunWeb.DashboardComponents do
                 :for={player <- @online_players}
                 id={"tp-#{@bot}-#{player}"}
                 phx-click="teleport_bot"
+                phx-target={@target}
                 phx-value-bot={@bot}
                 phx-value-player={player}
                 class="flex-1 py-1 border border-[#00ffff]/30 text-[#00ffff] text-[10px] hover:bg-[#00ffff]/10"
@@ -253,6 +265,7 @@ defmodule McFunWeb.DashboardComponents do
             <div class="pt-1">
               <button
                 phx-click="open_bot_config"
+                phx-target={@target}
                 phx-value-bot={@bot}
                 class="w-full py-1 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10"
               >
@@ -266,6 +279,7 @@ defmodule McFunWeb.DashboardComponents do
             </div>
             <button
               phx-click="attach_chatbot"
+              phx-target={@target}
               phx-value-bot={@bot}
               class="w-full mt-1 py-1 border border-[#00ff88]/50 text-[#00ff88] text-[10px] tracking-widest hover:bg-[#00ff88]/10"
             >
