@@ -1,0 +1,213 @@
+<div class="min-h-screen bg-[#0a0a0f] text-[#e0e0e0] font-mono">
+  <%!-- Scanline overlay --%>
+  <div class="pointer-events-none fixed inset-0 z-50 opacity-[0.03]" style="background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.03) 2px, rgba(255,255,255,0.03) 4px)" />
+
+  <%!-- Header --%>
+  <header class="sticky top-0 z-40 border-b-2 border-[#00ffff]/30 bg-[#0a0a0f]/95 backdrop-blur px-4 py-2">
+    <div class="flex items-center justify-between max-w-7xl mx-auto">
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2">
+          <div class={"w-2 h-2 #{if @rcon_status == :connected, do: "bg-[#00ff88] shadow-[0_0_6px_#00ff88]", else: "bg-[#ff4444] shadow-[0_0_6px_#ff4444]"}"} />
+          <span class="text-[#00ffff] font-bold tracking-widest text-sm">MC FUN</span>
+        </div>
+        <span class="text-[10px] text-[#666] tracking-wider">
+          RCON {if @rcon_status == :connected, do: "ONLINE", else: "OFFLINE"}
+        </span>
+      </div>
+
+      <div class="flex items-center gap-4 text-[10px] tracking-wider text-[#888]">
+        <span :if={@online_players != []}>
+          PLAYERS: <span class="text-[#00ff88]">{Enum.join(@online_players, ", ")}</span>
+        </span>
+        <span>UNITS: <span class="text-[#00ffff]">{length(@bots)}</span></span>
+      </div>
+    </div>
+  </header>
+
+  <%!-- Status bar + nav --%>
+  <div class="border-b border-[#222] px-4 py-1.5 bg-[#0d0d14]">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      <div class="flex gap-1">
+        <button
+          :for={{id, label} <- [{"bots", "UNITS"}, {"rcon", "RCON"}, {"effects", "FX"}, {"display", "DISPLAY"}, {"events", "EVENTS"}]}
+          class={"px-3 py-1 text-[10px] tracking-widest border transition-all " <>
+            if(@active_tab == id,
+              do: "border-[#00ffff] text-[#00ffff] bg-[#00ffff]/10",
+              else: "border-[#333] text-[#666] hover:border-[#555] hover:text-[#aaa]")}
+          phx-click="switch_tab"
+          phx-value-tab={id}
+        >
+          {label}
+        </button>
+      </div>
+
+      <%!-- Quick actions --%>
+      <div class="flex items-center gap-2">
+        <button
+          phx-click="quick_launch"
+          class="px-3 py-1 text-[10px] tracking-widest border border-[#00ff88] text-[#00ff88] hover:bg-[#00ff88]/10 transition-all"
+        >
+          [+] DEPLOY
+        </button>
+        <button
+          :if={@bots != []}
+          phx-click="stop_all_bots"
+          data-confirm="Terminate all units?"
+          class="px-3 py-1 text-[10px] tracking-widest border border-[#ff4444] text-[#ff4444] hover:bg-[#ff4444]/10 transition-all"
+        >
+          [X] PURGE ALL
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto p-4">
+    <%!-- ==================== UNITS TAB ==================== --%>
+    <div :if={@active_tab == "bots"} class="space-y-4">
+
+      <%!-- Deploy Panel --%>
+      <McFunWeb.DashboardComponents.deploy_panel
+        selected_model={@selected_model}
+        selected_preset={@selected_preset}
+        deploy_personality={@deploy_personality}
+        available_models={@available_models}
+        bot_spawn_name={@bot_spawn_name}
+      />
+
+      <%!-- Active Units --%>
+      <div class="border-2 border-[#333]/50 bg-[#0d0d14] p-4">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-[10px] tracking-widest text-[#888]">
+            ACTIVE UNITS <span class="text-[#00ffff]">[{length(@bots)}]</span>
+          </div>
+        </div>
+
+        <div :if={@bots == []} class="text-center py-8 text-[#333] text-xs">
+          NO UNITS DEPLOYED
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <McFunWeb.DashboardComponents.bot_card
+            :for={bot <- @bots}
+            bot={bot}
+            status={@bot_statuses[bot]}
+            online_players={@online_players}
+            available_models={@available_models}
+          />
+        </div>
+      </div>
+
+      <%!-- Commands reference --%>
+      <div class="border border-[#222] bg-[#0d0d14] p-4">
+        <div class="text-[10px] tracking-widest text-[#666] mb-2">COMMAND REFERENCE</div>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-1 text-[11px]">
+          <div><span class="text-[#00ffff]">!ask</span> <span class="text-[#666]">&lt;question&gt;</span></div>
+          <div><span class="text-[#00ffff]">/msg Bot</span> <span class="text-[#666]">&lt;text&gt;</span></div>
+          <div><span class="text-[#00ffff]">!models</span> <span class="text-[#666]">list models</span></div>
+          <div><span class="text-[#00ffff]">!model</span> <span class="text-[#666]">&lt;id&gt;</span></div>
+          <div><span class="text-[#00ffff]">!personality</span> <span class="text-[#666]">&lt;text&gt;</span></div>
+          <div><span class="text-[#00ffff]">!reset</span> <span class="text-[#666]">clear history</span></div>
+        </div>
+      </div>
+    </div>
+
+    <%!-- ==================== BOT CONFIG MODAL ==================== --%>
+    <McFunWeb.DashboardComponents.bot_config_modal
+      :if={@selected_bot}
+      bot={@selected_bot}
+      status={@bot_statuses[@selected_bot]}
+      modal_tab={@modal_tab}
+      available_models={@available_models}
+      online_players={@online_players}
+    />
+
+    <%!-- ==================== RCON TAB ==================== --%>
+    <div :if={@active_tab == "rcon"} class="border-2 border-[#333]/50 bg-[#0d0d14]">
+      <div class="text-[10px] tracking-widest text-[#888] px-4 pt-3 pb-2">RCON TERMINAL</div>
+      <div class="bg-[#080810] mx-2 mb-2 h-96 overflow-y-auto p-3 text-xs flex flex-col-reverse border border-[#222]">
+        <div :for={{entry, idx} <- Enum.with_index(@rcon_history)} id={"rcon-#{idx}"} class="mb-2">
+          <div class="text-[#00ffff]">&gt; {entry.cmd}</div>
+          <div class="text-[#888] whitespace-pre-wrap">{entry.result}</div>
+        </div>
+        <div :if={@rcon_history == []} class="text-[#333]">awaiting input...</div>
+      </div>
+      <form phx-submit="rcon_submit" class="flex gap-2 px-4 pb-4">
+        <input
+          type="text" name="command" value={@rcon_input}
+          phx-change="rcon_input" placeholder="enter rcon command..."
+          class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
+          autocomplete="off"
+        />
+        <button type="submit" class="px-4 py-2 border border-[#00ffff] text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10">
+          EXEC
+        </button>
+      </form>
+    </div>
+
+    <%!-- ==================== FX TAB ==================== --%>
+    <div :if={@active_tab == "effects"} class="border-2 border-[#333]/50 bg-[#0d0d14] p-4">
+      <div class="text-[10px] tracking-widest text-[#888] mb-3">EFFECTS PANEL</div>
+      <div class="flex items-center gap-2 mb-4">
+        <span class="text-[10px] tracking-wider text-[#666]">TARGET</span>
+        <input
+          type="text" value={@effect_target} phx-change="set_effect_target" name="target"
+          class="bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-1.5 text-xs w-40 focus:border-[#00ffff] focus:outline-none"
+        />
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button
+          :for={effect <- ["celebration", "welcome", "death", "achievement", "firework"]}
+          phx-click="fire_effect"
+          phx-value-effect={effect}
+          class="px-4 py-2 border border-[#aa66ff]/50 text-[#aa66ff] text-[10px] tracking-widest hover:bg-[#aa66ff]/10 hover:border-[#aa66ff] transition-all"
+        >
+          {String.upcase(effect)}
+        </button>
+      </div>
+    </div>
+
+    <%!-- ==================== DISPLAY TAB ==================== --%>
+    <div :if={@active_tab == "display"} class="border-2 border-[#333]/50 bg-[#0d0d14] p-4">
+      <div class="text-[10px] tracking-widest text-[#888] mb-3">BLOCK TEXT DISPLAY</div>
+      <form phx-submit="place_text" class="space-y-3">
+        <input
+          type="text" name="text" value={@display_text} placeholder="text to render..."
+          class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-2 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
+        />
+        <div class="grid grid-cols-4 gap-2">
+          <div :for={{label, name, val} <- [{"X", "x", @display_x}, {"Y", "y", @display_y}, {"Z", "z", @display_z}, {"BLOCK", "block", @display_block}]}>
+            <label class="text-[10px] tracking-wider text-[#666] block mb-1">{label}</label>
+            <input
+              type="text" name={name} value={val}
+              class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1.5 text-xs focus:border-[#00ffff] focus:outline-none"
+            />
+          </div>
+        </div>
+        <button type="submit" class="px-6 py-2 border-2 border-[#00ffff] text-[#00ffff] text-[10px] tracking-widest font-bold hover:bg-[#00ffff] hover:text-[#0a0a0f] transition-all">
+          RENDER
+        </button>
+      </form>
+    </div>
+
+    <%!-- ==================== EVENTS TAB ==================== --%>
+    <div :if={@active_tab == "events"} class="border-2 border-[#333]/50 bg-[#0d0d14]">
+      <div class="flex items-center justify-between px-4 pt-3 pb-2">
+        <div class="text-[10px] tracking-widest text-[#888]">
+          EVENT STREAM <span class="text-[#00ffff]">[{length(@events)}]</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <div class="w-1.5 h-1.5 rounded-full bg-[#00ff88] animate-pulse" />
+          <span class="text-[10px] text-[#00ff88]">LIVE</span>
+        </div>
+      </div>
+      <div class="bg-[#080810] mx-2 mb-2 h-96 overflow-y-auto p-3 text-[11px] border border-[#222]">
+        <div :for={{event, idx} <- Enum.with_index(@events)} id={"event-#{idx}"} class="mb-0.5 flex gap-2">
+          <span class="text-[#444] shrink-0">{Calendar.strftime(event.at, "%H:%M:%S")}</span>
+          <span class={"shrink-0 " <> event_color(event.type)}>[{event.type}]</span>
+          <span class="text-[#888]">{format_event_data(event.data)}</span>
+        </div>
+        <div :if={@events == []} class="text-[#333]">waiting for events...</div>
+      </div>
+    </div>
+  </div>
+</div>
