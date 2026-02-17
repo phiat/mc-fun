@@ -1,15 +1,15 @@
-defmodule McFun.Display do
+defmodule McFun.World.Display do
   @moduledoc """
   Block-font display system. Renders text as placed blocks in the Minecraft world.
 
   ## Usage
 
-      McFun.Display.write("HELLO", %{x: 100, y: 80, z: 200})
-      McFun.Display.write("MC FUN", %{x: 100, y: 80, z: 200}, material: "red_concrete")
-      McFun.Display.clear(%{x: 100, y: 73, z: 200}, %{width: 40, height: 7})
+      McFun.World.Display.write("HELLO", %{x: 100, y: 80, z: 200})
+      McFun.World.Display.write("MC FUN", %{x: 100, y: 80, z: 200}, material: "red_concrete")
+      McFun.World.Display.clear(%{x: 100, y: 73, z: 200}, %{width: 40, height: 7})
   """
 
-  alias McFun.Display.BlockFont
+  alias McFun.World.Display.BlockFont
   require Logger
 
   @command_delay 50

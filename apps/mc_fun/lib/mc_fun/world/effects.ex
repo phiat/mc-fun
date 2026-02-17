@@ -1,4 +1,4 @@
-defmodule McFun.Effects do
+defmodule McFun.World.Effects do
   @moduledoc """
   Visual and audio effects library for Minecraft via RCON.
 
@@ -6,9 +6,9 @@ defmodule McFun.Effects do
 
   ## Usage
 
-      McFun.Effects.firework("Steve")
-      McFun.Effects.particle("minecraft:heart", "Steve", count: 30)
-      McFun.Effects.celebration("@a")
+      McFun.World.Effects.firework("Steve")
+      McFun.World.Effects.particle("minecraft:heart", "Steve", count: 30)
+      McFun.World.Effects.celebration("@a")
   """
 
   require Logger

@@ -39,7 +39,10 @@ defmodule McFun.LLM.Groq do
     case Req.post(@base_url,
            json: body,
            headers: [{"authorization", "Bearer #{api_key}"}],
-           receive_timeout: 30_000
+           receive_timeout: 30_000,
+           retry: :transient,
+           max_retries: 3,
+           retry_delay: &retry_delay/1
          ) do
       {:ok, %{status: 200, body: %{"choices" => [%{"message" => message} | _]} = resp_body}} ->
         if bot_name = Keyword.get(opts, :bot_name) do
@@ -68,6 +71,8 @@ defmodule McFun.LLM.Groq do
         {:error, reason}
     end
   end
+
+  defp retry_delay(n), do: Integer.pow(2, n - 1) * 1_000
 
   defp maybe_add_tools(body, nil), do: body
   defp maybe_add_tools(body, []), do: body

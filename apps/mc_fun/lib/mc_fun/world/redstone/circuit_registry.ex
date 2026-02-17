@@ -1,4 +1,4 @@
-defmodule McFun.Redstone.CircuitRegistry do
+defmodule McFun.World.Redstone.CircuitRegistry do
   @moduledoc """
   GenServer backed by ETS for storing named redstone circuit definitions.
 

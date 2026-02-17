@@ -15,6 +15,8 @@ defmodule McFunWeb.WebhookController do
   """
   use McFunWeb, :controller
 
+  alias McFun.World.Effects
+
   require Logger
 
   @valid_name_pattern ~r/^[@\w]+$/
@@ -48,7 +50,7 @@ defmodule McFunWeb.WebhookController do
 
   defp process_webhook("celebrate", %{"player" => player}) do
     with :ok <- validate_target(player) do
-      Task.start(fn -> McFun.Effects.celebration(player) end)
+      Task.start(fn -> Effects.celebration(player) end)
       :ok
     end
   end
@@ -60,7 +62,7 @@ defmodule McFunWeb.WebhookController do
 
     with :ok <- validate_target(player) do
       opts = parse_firework_opts(params)
-      Task.start(fn -> McFun.Effects.firework(player, opts) end)
+      Task.start(fn -> Effects.firework(player, opts) end)
       :ok
     end
   end
@@ -74,7 +76,7 @@ defmodule McFunWeb.WebhookController do
         |> maybe_put(:stay, parse_int(Map.get(params, "stay")))
         |> maybe_put(:fade_out, parse_int(Map.get(params, "fade_out")))
 
-      Task.start(fn -> McFun.Effects.title(player, sanitize_text(text), opts) end)
+      Task.start(fn -> Effects.title(player, sanitize_text(text), opts) end)
       :ok
     end
   end
@@ -85,7 +87,7 @@ defmodule McFunWeb.WebhookController do
     safe_name = sanitize_text(name)
     McFun.Events.dispatch(:webhook_received, %{source: :github, pusher: safe_name, action: :push})
     McFun.Rcon.command("say [GitHub] #{safe_name} pushed new code!")
-    Task.start(fn -> McFun.Effects.celebration("@a") end)
+    Task.start(fn -> Effects.celebration("@a") end)
     :ok
   end
 

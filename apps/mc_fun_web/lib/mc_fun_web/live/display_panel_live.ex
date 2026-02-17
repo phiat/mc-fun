@@ -2,6 +2,8 @@ defmodule McFunWeb.DisplayPanelLive do
   @moduledoc "Display panel LiveComponent — block text rendering controls."
   use McFunWeb, :live_component
 
+  alias McFun.World.Display
+
   @impl true
   def update(assigns, socket) do
     {:ok,
@@ -94,7 +96,7 @@ defmodule McFunWeb.DisplayPanelLive do
 
       Task.start(fn ->
         try do
-          McFun.Display.write(text, {x, y, z}, block: block)
+          Display.write(text, {x, y, z}, block: block)
         rescue
           e -> send(parent, {:flash, :error, "Display failed: #{Exception.message(e)}"})
         end

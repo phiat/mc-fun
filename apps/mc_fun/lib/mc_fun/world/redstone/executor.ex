@@ -1,4 +1,4 @@
-defmodule McFun.Redstone.Executor do
+defmodule McFun.World.Redstone.Executor do
   @moduledoc """
   Stateless module that builds and executes RCON commands for
   redstone circuit placement, activation, and removal.

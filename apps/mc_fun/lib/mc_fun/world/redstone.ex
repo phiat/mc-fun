@@ -1,4 +1,4 @@
-defmodule McFun.Redstone do
+defmodule McFun.World.Redstone do
   @moduledoc """
   Public API for the redstone circuit system.
 
@@ -17,14 +17,14 @@ defmodule McFun.Redstone do
         trigger: %{x: 0, y: 0, z: -1}
       }
 
-      McFun.Redstone.create_circuit("door_1", circuit)
-      McFun.Redstone.place("door_1")
-      McFun.Redstone.activate("door_1")
-      McFun.Redstone.deactivate("door_1")
-      McFun.Redstone.remove("door_1")
+      McFun.World.Redstone.create_circuit("door_1", circuit)
+      McFun.World.Redstone.place("door_1")
+      McFun.World.Redstone.activate("door_1")
+      McFun.World.Redstone.deactivate("door_1")
+      McFun.World.Redstone.remove("door_1")
   """
 
-  alias McFun.Redstone.{CircuitRegistry, Executor}
+  alias McFun.World.Redstone.{CircuitRegistry, Executor}
 
   @doc "Register a named circuit definition."
   @spec create_circuit(String.t(), map()) :: :ok | {:error, term()}

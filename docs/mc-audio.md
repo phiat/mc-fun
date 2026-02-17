@@ -287,7 +287,7 @@ Low volume, `record` category so players can mute via Music/Jukebox slider.
 
 ## MC Fun Audio Integration
 
-### McFun.Music (`apps/mc_fun/lib/mc_fun/music.ex`)
+### McFun.World.Music (`apps/mc_fun/lib/mc_fun/world/music.ex`)
 
 Plays melodies note-by-note via RCON using note block sound events.
 
@@ -307,9 +307,9 @@ E4:e E4:e    # eighth notes
 
 **Usage**:
 ```elixir
-McFun.Music.play("songs/twinkle.txt")
-McFun.Music.play_notes([{"C4", :q}, {"D4", :q}], bpm: 140, instrument: "bell")
-McFun.Music.play_inline("C4:q D4:q E4:h", instrument: "flute", target: "Steve")
+McFun.World.Music.play("songs/twinkle.txt")
+McFun.World.Music.play_notes([{"C4", :q}, {"D4", :q}], bpm: 140, instrument: "bell")
+McFun.World.Music.play_inline("C4:q D4:q E4:h", instrument: "flute", target: "Steve")
 ```
 
 **RCON command generated per note**:
@@ -319,7 +319,7 @@ playsound minecraft:block.note_block.harp master @a ~ ~ ~ 1 <pitch>
 
 Note: Uses `~ ~ ~` for position, which means the sound originates at the executing context. Since RCON has no entity context, this resolves to world origin. Wrapping in `execute at <target> run ...` would fix spatialization but is not currently implemented.
 
-### McFun.Effects (`apps/mc_fun/lib/mc_fun/effects.ex`)
+### McFun.World.Effects (`apps/mc_fun/lib/mc_fun/world/effects.ex`)
 
 Provides preset audio+visual combos via RCON.
 

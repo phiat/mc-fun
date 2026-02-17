@@ -19,6 +19,8 @@ defmodule Mix.Tasks.Mc.Fx do
   @shortdoc "Fire effects and title messages"
   use Mix.Task
 
+  alias McFun.World.Effects
+
   @effects ~w(welcome celebration death achievement firework)
 
   @impl true
@@ -26,20 +28,20 @@ defmodule Mix.Tasks.Mc.Fx do
     Mix.Task.run("app.start")
     subtitle = List.first(rest)
     opts = if subtitle, do: [subtitle: subtitle], else: []
-    McFun.Effects.title(target, title, opts)
+    Effects.title(target, title, opts)
     Mix.shell().info("Title sent to #{target}")
   end
 
   def run(["sound", target, sound_name | rest]) do
     Mix.Task.run("app.start")
     pitch = parse_float(List.first(rest), 1.0)
-    McFun.Effects.sound(sound_name, target, pitch: pitch)
+    Effects.sound(sound_name, target, pitch: pitch)
     Mix.shell().info("Sound #{sound_name} >> #{target}")
   end
 
   def run(["particle", target, particle_type | _rest]) do
     Mix.Task.run("app.start")
-    McFun.Effects.particle(particle_type, target)
+    Effects.particle(particle_type, target)
     Mix.shell().info("Particle #{particle_type} >> #{target}")
   end
 
@@ -59,11 +61,11 @@ defmodule Mix.Tasks.Mc.Fx do
     """)
   end
 
-  defp apply_effect("welcome", target), do: McFun.Effects.welcome(target)
-  defp apply_effect("celebration", target), do: McFun.Effects.celebration(target)
-  defp apply_effect("death", target), do: McFun.Effects.death_effect(target)
-  defp apply_effect("achievement", target), do: McFun.Effects.achievement_fanfare(target)
-  defp apply_effect("firework", target), do: McFun.Effects.firework(target)
+  defp apply_effect("welcome", target), do: Effects.welcome(target)
+  defp apply_effect("celebration", target), do: Effects.celebration(target)
+  defp apply_effect("death", target), do: Effects.death_effect(target)
+  defp apply_effect("achievement", target), do: Effects.achievement_fanfare(target)
+  defp apply_effect("firework", target), do: Effects.firework(target)
 
   defp parse_float(nil, default), do: default
 

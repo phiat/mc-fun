@@ -3,6 +3,8 @@ defmodule Mix.Tasks.Mc.Music.Play do
   @shortdoc "Play a Minecraft song"
   use Mix.Task
 
+  alias McFun.World.Music
+
   @impl true
   def run(args) do
     {opts, positional, _} =
@@ -12,7 +14,7 @@ defmodule Mix.Tasks.Mc.Music.Play do
 
     Mix.Task.run("app.start")
 
-    case McFun.Music.play(file, opts) do
+    case Music.play(file, opts) do
       :ok -> Mix.shell().info("Done playing.")
       {:error, reason} -> Mix.shell().error("Error: #{inspect(reason)}")
     end
@@ -24,6 +26,8 @@ defmodule Mix.Tasks.Mc.Music.Inline do
   @shortdoc "Play inline notes"
   use Mix.Task
 
+  alias McFun.World.Music
+
   @impl true
   def run(args) do
     {opts, positional, _} =
@@ -32,7 +36,7 @@ defmodule Mix.Tasks.Mc.Music.Inline do
     notes = Enum.join(positional, " ")
 
     Mix.Task.run("app.start")
-    McFun.Music.play_inline(notes, opts)
+    Music.play_inline(notes, opts)
     Mix.shell().info("Done.")
   end
 end

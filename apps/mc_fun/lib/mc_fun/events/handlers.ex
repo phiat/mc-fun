@@ -3,6 +3,8 @@ defmodule McFun.Events.Handlers do
   Default event handlers. Call `register_all/0` after the application starts
   to wire up standard event → effect mappings.
   """
+  alias McFun.World.Effects
+
   require Logger
 
   @doc "Register all default event handlers."
@@ -19,7 +21,7 @@ defmodule McFun.Events.Handlers do
   defp register_join_welcome do
     McFun.Events.subscribe(:player_join, fn _type, %{username: username} ->
       Logger.info("Player #{username} joined — triggering welcome")
-      McFun.Effects.welcome(username)
+      Effects.welcome(username)
       McFun.Rcon.command("say Welcome #{username}!")
     end)
   end
@@ -29,7 +31,7 @@ defmodule McFun.Events.Handlers do
       username = Map.get(data, :username, "someone")
       cause = Map.get(data, :cause, "unknown")
       Logger.info("Player #{username} died: #{cause}")
-      McFun.Effects.death_effect(username)
+      Effects.death_effect(username)
     end)
   end
 
@@ -38,7 +40,7 @@ defmodule McFun.Events.Handlers do
       username = Map.get(data, :username, "someone")
       advancement = Map.get(data, :advancement, "unknown")
       Logger.info("Player #{username} got advancement: #{advancement}")
-      McFun.Effects.achievement_fanfare(username)
+      Effects.achievement_fanfare(username)
     end)
   end
 

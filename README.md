@@ -124,8 +124,8 @@ Phoenix LiveView Dashboard (/dashboard)
     |-- McFun.Presets -------- 22 bot personalities across 6 categories
     |-- McFun.SNBT ----------- NBT text -> Elixir maps/lists (recursive descent)
     |-- McFun.Rcon ----------- Minecraft Server (RCON)
-    |-- McFun.Effects -------- title, firework, particle, sound effects
-    +-- McFun.Display -------- Block text rendering
+    |-- McFun.World.Effects --- title, firework, particle, sound effects
+    +-- McFun.World.Display --- Block text rendering
 ```
 
 ## In-Game Commands

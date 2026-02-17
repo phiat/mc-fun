@@ -73,13 +73,16 @@ mc-fun/                              # repo root = umbrella root
 │   │   │   ├── events.ex            # PubSub event system
 │   │   │   ├── events/handlers.ex   # Default event handler registration
 │   │   │   ├── event_store.ex       # In-memory event store
-│   │   │   ├── effects.ex           # MC effects (celebration, welcome, death, firework)
-│   │   │   ├── display.ex           # Block text rendering in-world
-│   │   │   ├── music.ex             # Music/sound via RCON
-│   │   │   ├── redstone.ex          # Redstone circuit helpers
 │   │   │   ├── snbt.ex             # SNBT parser public API
 │   │   │   ├── snbt/parser.ex      # Recursive descent SNBT parser
-│   │   │   └── llm/                 # Groq API client + model cache
+│   │   │   ├── llm/                 # Groq API client + model cache
+│   │   │   └── world/               # RCON-based world manipulation
+│   │   │       ├── effects.ex       # MC effects (celebration, welcome, death, firework)
+│   │   │       ├── display.ex       # Block text rendering in-world
+│   │   │       ├── display/block_font.ex # 5x7 block-font bitmaps
+│   │   │       ├── music.ex         # Music/sound via RCON
+│   │   │       ├── redstone.ex      # Redstone circuit helpers
+│   │   │       └── redstone/        # Circuit registry + executor
 │   │   └── priv/mineflayer/bridge.js # Node.js mineflayer bridge
 │   │
 │   └── mc_fun_web/                  # web app — Phoenix, LiveView, dashboard
@@ -110,7 +113,7 @@ mc-fun/                              # repo root = umbrella root
 ```
 ├── Phoenix.PubSub (name: McFun.PubSub)
 ├── McFun.Rcon
-├── McFun.Redstone.CircuitRegistry
+├── McFun.World.Redstone.CircuitRegistry
 ├── McFun.LLM.ModelCache            # ETS + disk cache
 ├── McFun.ChatLog                   # Persistent chat log (JSONL + ring buffer)
 ├── McFun.EventStore

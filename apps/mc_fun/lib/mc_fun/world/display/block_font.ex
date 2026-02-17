@@ -1,4 +1,4 @@
-defmodule McFun.Display.BlockFont do
+defmodule McFun.World.Display.BlockFont do
   @moduledoc """
   5x7 block-font character bitmaps and text-to-coordinate renderer.
 
@@ -7,7 +7,7 @@ defmodule McFun.Display.BlockFont do
 
   ## Usage
 
-      blocks = McFun.Display.BlockFont.render("HI", %{x: 0, y: 80, z: 0})
+      blocks = McFun.World.Display.BlockFont.render("HI", %{x: 0, y: 80, z: 0})
       # => [%{pos: %{x: ..., y: ..., z: ...}, block: "white_concrete"}, ...]
   """
 

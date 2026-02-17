@@ -1,4 +1,4 @@
-defmodule McFun.Music do
+defmodule McFun.World.Music do
   @moduledoc """
   Minecraft music player using RCON /playsound commands.
 
@@ -12,8 +12,8 @@ defmodule McFun.Music do
   Instruments: harp, bass, basedrum, bell, chime, flute, guitar, iron_xylophone, xylophone, bit, banjo, pling, didgeridoo, cow_bell
 
   Usage:
-    McFun.Music.play("songs/twinkle.txt")
-    McFun.Music.play_notes([{"C4", :q}, {"D4", :q}, {"E4", :h}])
+    McFun.World.Music.play("songs/twinkle.txt")
+    McFun.World.Music.play_notes([{"C4", :q}, {"D4", :q}, {"E4", :h}])
   """
   require Logger
 

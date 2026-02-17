@@ -2,6 +2,8 @@ defmodule McFunWeb.EffectsPanelLive do
   @moduledoc "Effects panel LiveComponent — FX tab with effect triggers and title sending."
   use McFunWeb, :live_component
 
+  alias McFun.World.Effects
+
   @impl true
   def update(assigns, socket) do
     {:ok,
@@ -101,11 +103,11 @@ defmodule McFunWeb.EffectsPanelLive do
     Task.start(fn ->
       try do
         case effect do
-          "celebration" -> McFun.Effects.celebration(target)
-          "welcome" -> McFun.Effects.welcome(target)
-          "death" -> McFun.Effects.death_effect(target)
-          "achievement" -> McFun.Effects.achievement_fanfare(target)
-          "firework" -> McFun.Effects.firework(target)
+          "celebration" -> Effects.celebration(target)
+          "welcome" -> Effects.welcome(target)
+          "death" -> Effects.death_effect(target)
+          "achievement" -> Effects.achievement_fanfare(target)
+          "firework" -> Effects.firework(target)
           _ -> :ok
         end
       rescue
@@ -133,7 +135,7 @@ defmodule McFunWeb.EffectsPanelLive do
 
     Task.start(fn ->
       try do
-        McFun.Effects.title(target, title, opts)
+        Effects.title(target, title, opts)
       rescue
         e -> send(parent, {:flash, :error, "Title failed: #{Exception.message(e)}"})
       end

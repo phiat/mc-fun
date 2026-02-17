@@ -14,7 +14,7 @@ defmodule McFun.Application do
     children = [
       {Phoenix.PubSub, name: McFun.PubSub},
       McFun.Rcon.Supervisor,
-      McFun.Redstone.CircuitRegistry,
+      McFun.World.Redstone.CircuitRegistry,
       McFun.LLM.ModelCache,
       McFun.CostTracker,
       McFun.BotChat,

@@ -105,7 +105,9 @@ defmodule McFun.LLM.ModelCache do
     else
       case Req.get("https://api.groq.com/openai/v1/models",
              headers: [{"authorization", "Bearer #{api_key}"}],
-             receive_timeout: 10_000
+             receive_timeout: 10_000,
+             retry: :transient,
+             max_retries: 2
            ) do
         {:ok, %{status: 200, body: %{"data" => models}}} ->
           store_models(models)
