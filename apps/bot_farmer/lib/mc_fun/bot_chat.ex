@@ -176,6 +176,7 @@ defmodule McFun.BotChat do
   def handle_call({:add_topic, topic}, _from, state) do
     topics = [topic | state.custom_topics] |> Enum.uniq()
     new_state = %{state | custom_topics: topics}
+    Logger.info("BotChat: added custom topic: #{inspect(topic)} (#{length(topics)} custom total)")
     broadcast_update(new_state)
     {:reply, :ok, new_state}
   end
@@ -413,21 +414,32 @@ defmodule McFun.BotChat do
   defp do_inject_topic(state) do
     bots = MapSet.to_list(state.subscribed_bots)
 
+    all_topics = @default_topics ++ state.custom_topics
+    disabled_count = MapSet.size(state.disabled_topics)
+
     enabled_topics =
-      (@default_topics ++ state.custom_topics)
+      all_topics
       |> Enum.reject(&MapSet.member?(state.disabled_topics, &1))
+
+    Logger.info(
+      "BotChat: topic injection check — #{length(bots)} bots, " <>
+        "#{length(all_topics)} total topics (#{disabled_count} disabled), " <>
+        "#{length(enabled_topics)} enabled"
+    )
 
     if bots != [] and enabled_topics != [] do
       topic = Enum.random(enabled_topics)
       bot = Enum.random(bots)
 
-      Logger.info("BotChat: injecting topic via #{bot}: #{topic}")
+      Logger.info("BotChat: injecting topic via #{bot}: #{inspect(topic)}")
 
       try do
         McFun.ChatBot.inject_topic(bot, topic)
       catch
         _, _ -> :ok
       end
+    else
+      Logger.info("BotChat: skipping topic injection (no bots or no enabled topics)")
     end
 
     state
@@ -438,7 +450,9 @@ defmodule McFun.BotChat do
       Process.cancel_timer(state.topic_timer_ref)
     end
 
-    ref = Process.send_after(self(), :inject_topic, state.config.topic_interval_ms)
+    interval = state.config.topic_interval_ms
+    Logger.info("BotChat: next topic injection in #{div(interval, 1000)}s")
+    ref = Process.send_after(self(), :inject_topic, interval)
     %{state | topic_timer_ref: ref, topic_injection_enabled: true}
   end
 
