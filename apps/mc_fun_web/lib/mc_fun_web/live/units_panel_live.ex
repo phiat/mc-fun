@@ -210,13 +210,13 @@ defmodule McFunWeb.UnitsPanelLive do
                 </div>
               </div>
 
-              <%!-- Custom topics --%>
+              <%!-- Add topic --%>
               <form phx-submit="add_custom_topic" phx-target={@myself} class="flex gap-2">
                 <input
                   type="text"
                   name="topic"
                   value={@new_topic}
-                  placeholder="Add custom topic..."
+                  placeholder="Add topic..."
                   class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#aa66ff] focus:outline-none placeholder:text-[#444]"
                 />
                 <button
@@ -227,17 +227,37 @@ defmodule McFunWeb.UnitsPanelLive do
                 </button>
               </form>
 
-              <div
-                :if={(@bot_chat_status[:custom_topics] || []) != []}
-                class="mt-2 space-y-1"
-              >
-                <div class="text-[9px] tracking-wider text-[#666]">CUSTOM TOPICS</div>
+              <%!-- Unified topic list --%>
+              <% disabled = @bot_chat_status[:disabled_topics] || []
+              all_topics = default_topics() ++ (@bot_chat_status[:custom_topics] || [])
+              custom_set = MapSet.new(@bot_chat_status[:custom_topics] || [])
+              enabled_count = Enum.count(all_topics, &(&1 not in disabled)) %>
+              <div class="mt-2 space-y-0.5">
+                <div class="text-[9px] tracking-wider text-[#666] mb-1">
+                  TOPICS [{enabled_count}/{length(all_topics)}]
+                </div>
                 <div
-                  :for={topic <- @bot_chat_status[:custom_topics] || []}
-                  class="flex items-center justify-between bg-[#080810] border border-[#222] px-2 py-1"
+                  :for={topic <- all_topics}
+                  class={"flex items-center gap-2 px-2 py-1 border transition-all " <>
+                    if(topic not in disabled,
+                      do: "bg-[#080810] border-[#222]",
+                      else: "bg-[#0a0a0f] border-[#1a1a1a] opacity-40")}
                 >
-                  <span class="text-[10px] text-[#aaa] truncate mr-2">{topic}</span>
                   <button
+                    phx-click="toggle_topic"
+                    phx-target={@myself}
+                    phx-value-topic={topic}
+                    phx-value-enabled={to_string(topic in disabled)}
+                    class={"w-4 h-4 border text-[8px] flex items-center justify-center shrink-0 transition-all " <>
+                      if(topic not in disabled,
+                        do: "border-[#00ff88] text-[#00ff88] bg-[#00ff88]/10",
+                        else: "border-[#444] text-[#444]")}
+                  >
+                    {if topic not in disabled, do: "✓", else: ""}
+                  </button>
+                  <span class="text-[10px] text-[#aaa] truncate flex-1">{topic}</span>
+                  <button
+                    :if={MapSet.member?(custom_set, topic)}
                     phx-click="remove_custom_topic"
                     phx-target={@myself}
                     phx-value-topic={topic}
@@ -247,21 +267,6 @@ defmodule McFunWeb.UnitsPanelLive do
                   </button>
                 </div>
               </div>
-
-              <%!-- Default topics (read-only) --%>
-              <details class="mt-2">
-                <summary class="text-[9px] tracking-wider text-[#555] cursor-pointer hover:text-[#888] select-none">
-                  DEFAULT TOPICS [10]
-                </summary>
-                <div class="mt-1 space-y-0.5">
-                  <div
-                    :for={topic <- default_topics()}
-                    class="text-[10px] text-[#555] px-2 py-0.5"
-                  >
-                    {topic}
-                  </div>
-                </div>
-              </details>
             </div>
 
             <%!-- Active pairs --%>
@@ -491,6 +496,11 @@ defmodule McFunWeb.UnitsPanelLive do
 
   def handle_event("remove_custom_topic", %{"topic" => topic}, socket) do
     McFun.BotChat.remove_topic(topic)
+    {:noreply, assign(socket, bot_chat_status: McFun.BotChat.status())}
+  end
+
+  def handle_event("toggle_topic", %{"topic" => topic, "enabled" => enabled}, socket) do
+    McFun.BotChat.toggle_topic(topic, enabled == "true")
     {:noreply, assign(socket, bot_chat_status: McFun.BotChat.status())}
   end
 

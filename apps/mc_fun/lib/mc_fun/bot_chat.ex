@@ -75,6 +75,11 @@ defmodule McFun.BotChat do
     GenServer.call(__MODULE__, {:remove_topic, topic})
   end
 
+  @doc "Enable or disable a specific topic."
+  def toggle_topic(topic, enabled?) when is_binary(topic) do
+    GenServer.call(__MODULE__, {:toggle_topic, topic, enabled?})
+  end
+
   @doc "Enable or disable periodic topic injection."
   def toggle_topic_injection(enabled?) do
     GenServer.call(__MODULE__, {:toggle_topic_injection, enabled?})
@@ -99,6 +104,7 @@ defmodule McFun.BotChat do
       },
       pairs: %{},
       custom_topics: [],
+      disabled_topics: MapSet.new(),
       topic_injection_enabled: Keyword.get(config, :topic_injection_enabled, false),
       topic_timer_ref: nil,
       subscribed_bots: MapSet.new(),
@@ -126,6 +132,7 @@ defmodule McFun.BotChat do
        pairs: state.pairs,
        config: state.config,
        custom_topics: state.custom_topics,
+       disabled_topics: MapSet.to_list(state.disabled_topics),
        topic_injection_enabled: state.topic_injection_enabled,
        subscribed_bots: MapSet.to_list(state.subscribed_bots)
      }, state}
@@ -168,7 +175,21 @@ defmodule McFun.BotChat do
   @impl true
   def handle_call({:remove_topic, topic}, _from, state) do
     topics = List.delete(state.custom_topics, topic)
-    new_state = %{state | custom_topics: topics}
+    disabled = MapSet.delete(state.disabled_topics, topic)
+    new_state = %{state | custom_topics: topics, disabled_topics: disabled}
+    broadcast_update(new_state)
+    {:reply, :ok, new_state}
+  end
+
+  @impl true
+  def handle_call({:toggle_topic, topic, true}, _from, state) do
+    new_state = %{state | disabled_topics: MapSet.delete(state.disabled_topics, topic)}
+    broadcast_update(new_state)
+    {:reply, :ok, new_state}
+  end
+
+  def handle_call({:toggle_topic, topic, false}, _from, state) do
+    new_state = %{state | disabled_topics: MapSet.put(state.disabled_topics, topic)}
     broadcast_update(new_state)
     {:reply, :ok, new_state}
   end
@@ -361,9 +382,12 @@ defmodule McFun.BotChat do
   defp do_inject_topic(state) do
     bots = MapSet.to_list(state.subscribed_bots)
 
-    if bots != [] do
-      all_topics = @default_topics ++ state.custom_topics
-      topic = Enum.random(all_topics)
+    enabled_topics =
+      (@default_topics ++ state.custom_topics)
+      |> Enum.reject(&MapSet.member?(state.disabled_topics, &1))
+
+    if bots != [] and enabled_topics != [] do
+      topic = Enum.random(enabled_topics)
       bot = Enum.random(bots)
 
       Logger.info("BotChat: injecting topic via #{bot}: #{topic}")
@@ -397,6 +421,7 @@ defmodule McFun.BotChat do
          pairs: state.pairs,
          config: state.config,
          custom_topics: state.custom_topics,
+         disabled_topics: MapSet.to_list(state.disabled_topics),
          topic_injection_enabled: state.topic_injection_enabled
        }}
     )
