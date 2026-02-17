@@ -468,6 +468,10 @@ defmodule McFunWeb.DashboardComponents do
 
   defp format_activity(%{activity: %{state: :idle}}), do: "IDLE"
 
+  defp format_activity(%{activity: %{state: state, source: :llm}}) do
+    format_action_name(state)
+  end
+
   defp format_activity(%{activity: %{state: state, source: source}}) do
     "#{format_action_name(state)}#{if source, do: " (#{source})", else: ""}"
   end
@@ -484,6 +488,8 @@ defmodule McFunWeb.DashboardComponents do
   defp format_action_name(:place), do: "PLACING"
   defp format_action_name(:craft), do: "CRAFTING"
   defp format_action_name(:equip), do: "EQUIPPING"
+  defp format_action_name(:thinking), do: "THINKING"
+  defp format_action_name(:chatting), do: "CHATTING"
   defp format_action_name(action), do: action |> to_string() |> String.upcase()
 
   defp format_behavior(nil), do: "NONE"

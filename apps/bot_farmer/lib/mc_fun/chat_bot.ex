@@ -256,6 +256,7 @@ defmodule McFun.ChatBot do
           fetch_followup_chat(bot_name, personality, model, tool_names, username)
         end
 
+      broadcast_activity(bot_name, "chatting", username)
       TextFilter.send_paginated(bot_name, chat_reply, mode, username)
 
       for %{name: name, args: args} <- tool_calls do
@@ -268,6 +269,9 @@ defmodule McFun.ChatBot do
             Logger.warning("ChatBot #{bot_name}: tool #{name} failed: #{kind} #{inspect(reason)}")
         end
       end
+
+      # Clear activity after tools finish (unless a tool set its own action)
+      broadcast_activity(bot_name, nil)
     end)
 
     state = state |> add_bot_response(username, response) |> track_last_message(response)
@@ -298,10 +302,14 @@ defmodule McFun.ChatBot do
     bot_name = state.bot_name
 
     Task.start(fn ->
+      broadcast_activity(bot_name, "chatting", username)
       TextFilter.send_paginated(bot_name, reply, mode, username)
 
       if parsed_actions != [] do
         McFun.ActionParser.execute(parsed_actions, bot_name)
+      else
+        # No actions parsed — clear activity back to idle
+        broadcast_activity(bot_name, nil)
       end
     end)
 
@@ -312,6 +320,7 @@ defmodule McFun.ChatBot do
   @impl true
   def handle_info({:llm_response, _username, {:error, reason}, _mode}, state) do
     Logger.warning("ChatBot LLM error: #{inspect(reason)}")
+    broadcast_activity(state.bot_name, nil)
     broadcast_llm_event(state.bot_name, nil, "LLM error: #{inspect(reason)}", nil)
     McFun.Bot.chat(state.bot_name, "Sorry, LLM error — try again!")
     {:noreply, state}
@@ -336,6 +345,8 @@ defmodule McFun.ChatBot do
       personality = state.personality
       model = state.model
       pid = self()
+
+      broadcast_activity(bot_name, "thinking")
 
       Task.start(fn ->
         context = Context.build(bot_name)
@@ -375,6 +386,7 @@ defmodule McFun.ChatBot do
   @impl true
   def handle_info({:heartbeat_response, {:error, reason}}, state) do
     Logger.warning("ChatBot #{state.bot_name}: heartbeat LLM error: #{inspect(reason)}")
+    broadcast_activity(state.bot_name, nil)
     {:noreply, schedule_heartbeat(state)}
   end
 
@@ -392,6 +404,7 @@ defmodule McFun.ChatBot do
   @impl true
   def handle_info({:topic_response, {:error, reason}}, state) do
     Logger.warning("ChatBot #{state.bot_name}: topic LLM error: #{inspect(reason)}")
+    broadcast_activity(state.bot_name, nil)
     {:noreply, state}
   end
 
@@ -405,6 +418,8 @@ defmodule McFun.ChatBot do
     personality = state.personality
     model = state.model
     pid = self()
+
+    broadcast_activity(bot_name, "thinking")
 
     Task.start(fn ->
       context = Context.build(bot_name)
@@ -451,8 +466,16 @@ defmodule McFun.ChatBot do
 
     if reply != "" do
       bot_name = state.bot_name
-      Task.start(fn -> TextFilter.send_paginated(bot_name, reply) end)
+      broadcast_activity(bot_name, "chatting")
+
+      Task.start(fn ->
+        TextFilter.send_paginated(bot_name, reply)
+        broadcast_activity(bot_name, nil)
+      end)
+
       broadcast_llm_event(state.bot_name, nil, reply, tag)
+    else
+      broadcast_activity(state.bot_name, nil)
     end
 
     now = System.monotonic_time(:millisecond)
@@ -583,6 +606,8 @@ defmodule McFun.ChatBot do
     tools = if use_tools, do: Tools.definitions(), else: nil
     bot_name = state.bot_name
 
+    broadcast_activity(bot_name, "thinking", username)
+
     Task.start_link(fn ->
       # Get environment context
       context = Context.build(bot_name, history: history)
@@ -711,6 +736,15 @@ defmodule McFun.ChatBot do
     }
 
     Phoenix.PubSub.broadcast(McFun.PubSub, "bot:#{bot_name}", {:bot_event, bot_name, event})
+  end
+
+  defp broadcast_activity(bot_name, activity, context \\ nil) do
+    Phoenix.PubSub.broadcast(
+      McFun.PubSub,
+      "bot:#{bot_name}",
+      {:bot_event, bot_name,
+       %{"event" => "activity_change", "activity" => activity, "context" => context}}
+    )
   end
 
   # Reasoning models need more tokens for chain-of-thought

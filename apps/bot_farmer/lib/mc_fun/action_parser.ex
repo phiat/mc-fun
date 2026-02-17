@@ -94,35 +94,35 @@ defmodule McFun.ActionParser do
   # -- Execution --
 
   defp execute_one(bot, :dig_looking_at, _params) do
-    McFun.Bot.send_command(bot, %{action: "dig_looking_at"})
+    McFun.Bot.send_command(bot, %{action: "dig_looking_at"}, source: :action_parser)
   end
 
   defp execute_one(bot, :jump, _params) do
-    McFun.Bot.send_command(bot, %{action: "jump"})
+    McFun.Bot.send_command(bot, %{action: "jump"}, source: :action_parser)
   end
 
   defp execute_one(bot, :attack, _params) do
-    McFun.Bot.send_command(bot, %{action: "attack"})
+    McFun.Bot.send_command(bot, %{action: "attack"}, source: :action_parser)
   end
 
   defp execute_one(bot, :sneak, _params) do
-    McFun.Bot.send_command(bot, %{action: "sneak"})
+    McFun.Bot.send_command(bot, %{action: "sneak"}, source: :action_parser)
   end
 
   defp execute_one(bot, :follow, %{target: target}) do
-    McFun.Bot.send_command(bot, %{action: "follow", target: target})
+    McFun.Bot.send_command(bot, %{action: "follow", target: target}, source: :action_parser)
   end
 
   defp execute_one(bot, :goto, %{target: target}) do
-    McFun.Bot.send_command(bot, %{action: "goto", target: target})
+    McFun.Bot.send_command(bot, %{action: "goto", target: target}, source: :action_parser)
   end
 
   defp execute_one(bot, :drop, _params) do
-    McFun.Bot.drop(bot)
+    McFun.Bot.send_command(bot, %{action: "drop"}, source: :action_parser)
   end
 
   defp execute_one(bot, :equip, %{item: item}) when is_binary(item) do
-    McFun.Bot.equip(bot, item)
+    McFun.Bot.send_command(bot, %{action: "equip", item_name: item, destination: "hand"}, source: :action_parser)
   end
 
   defp execute_one(_bot, :equip, _params) do
@@ -131,7 +131,7 @@ defmodule McFun.ActionParser do
   end
 
   defp execute_one(bot, :craft, %{item: item}) when is_binary(item) do
-    McFun.Bot.craft(bot, item)
+    McFun.Bot.send_command(bot, %{action: "craft", item_name: item, count: 1}, source: :action_parser)
   end
 
   defp execute_one(_bot, :craft, _params) do

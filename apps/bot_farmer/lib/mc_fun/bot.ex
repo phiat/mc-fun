@@ -447,7 +447,7 @@ defmodule McFun.Bot do
     end
   end
 
-  defp maybe_track_action(state, _command, source) when source not in [:tool, :behavior], do: state
+  defp maybe_track_action(state, _command, source) when source not in [:tool, :behavior, :action_parser], do: state
 
   defp maybe_track_action(state, command, source) do
     action_name = action_atom(command)

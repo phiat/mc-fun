@@ -411,6 +411,18 @@ defmodule McFunWeb.DashboardLive do
     update_bot_status(statuses, bot_name, %{current_action: action, activity: activity})
   end
 
+  defp apply_bot_event(statuses, bot_name, "activity_change", %{"activity" => activity}) do
+    state =
+      case activity do
+        "thinking" -> %{state: :thinking, source: :llm}
+        "chatting" -> %{state: :chatting, source: :llm}
+        nil -> %{state: :idle, source: nil}
+        other -> %{state: String.to_existing_atom(other), source: :llm}
+      end
+
+    update_bot_status(statuses, bot_name, %{activity: state})
+  end
+
   defp apply_bot_event(statuses, _bot_name, _event_type, _event_data), do: statuses
 
   defp build_bot_statuses do
