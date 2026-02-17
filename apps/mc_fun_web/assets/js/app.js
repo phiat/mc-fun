@@ -98,7 +98,7 @@ const Hooks = {
         const atBottom = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < threshold
         if (atBottom !== this.isAtBottom) {
           this.isAtBottom = atBottom
-          this.pushEvent("scroll_state_changed", { at_bottom: atBottom })
+          this.pushEventTo(this.el, "scroll_state_changed", { at_bottom: atBottom })
         }
       })
 

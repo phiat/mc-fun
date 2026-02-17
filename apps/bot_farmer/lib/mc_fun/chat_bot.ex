@@ -224,7 +224,7 @@ defmodule McFun.ChatBot do
 
   # LLM response with tool calls
   @impl true
-  def handle_info({:llm_response, username, {:ok, response, tool_calls}}, state) do
+  def handle_info({:llm_response, username, {:ok, response, tool_calls}, mode}, state) do
     reply = strip_thinking(response)
 
     # Broadcast stripped response to dashboard
@@ -255,7 +255,7 @@ defmodule McFun.ChatBot do
           fetch_followup_chat(bot_name, personality, model, tool_names, username)
         end
 
-      send_paginated(bot_name, chat_reply)
+      send_paginated(bot_name, chat_reply, mode, username)
 
       for %{name: name, args: args} <- tool_calls do
         Logger.info("ChatBot #{bot_name}: tool call #{name}(#{inspect(args)})")
@@ -275,7 +275,7 @@ defmodule McFun.ChatBot do
 
   # LLM response text only (no tool calls) — fall back to regex parser
   @impl true
-  def handle_info({:llm_response, username, {:ok, response}}, state) do
+  def handle_info({:llm_response, username, {:ok, response}, mode}, state) do
     reply = strip_thinking(response)
 
     # Fallback: regex-based action parsing for models without tool support
@@ -297,7 +297,7 @@ defmodule McFun.ChatBot do
     bot_name = state.bot_name
 
     Task.start(fn ->
-      send_paginated(bot_name, reply)
+      send_paginated(bot_name, reply, mode, username)
 
       if parsed_actions != [] do
         McFun.ActionParser.execute(parsed_actions, bot_name)
@@ -309,7 +309,7 @@ defmodule McFun.ChatBot do
   end
 
   @impl true
-  def handle_info({:llm_response, _username, {:error, reason}}, state) do
+  def handle_info({:llm_response, _username, {:error, reason}, _mode}, state) do
     Logger.warning("ChatBot LLM error: #{inspect(reason)}")
     broadcast_llm_event(state.bot_name, nil, "LLM error: #{inspect(reason)}", nil)
     McFun.Bot.chat(state.bot_name, "Sorry, LLM error — try again!")
@@ -571,7 +571,7 @@ defmodule McFun.ChatBot do
     state
   end
 
-  # Whispers without prefix still get a response
+  # Whispers without prefix still get a response (whisper back, not public chat)
   defp handle_message(state, username, message, :whisper) do
     now = System.monotonic_time(:millisecond)
 
@@ -579,7 +579,7 @@ defmodule McFun.ChatBot do
       state
     else
       state = add_to_history(state, username, message)
-      spawn_response(state, username)
+      spawn_response(state, username, :whisper)
       %{state | last_response: now}
     end
   end
@@ -589,7 +589,7 @@ defmodule McFun.ChatBot do
 
   # LLM interaction
 
-  defp spawn_response(state, username) do
+  defp spawn_response(state, username, mode \\ :chat) do
     pid = self()
     history = Map.get(state.conversations, username, [])
     model = state.model
@@ -630,7 +630,7 @@ defmodule McFun.ChatBot do
         )
 
       Logger.info("ChatBot Groq result: #{inspect(result, limit: 200)}")
-      send(pid, {:llm_response, username, result})
+      send(pid, {:llm_response, username, result, mode})
     end)
   end
 
@@ -708,12 +708,16 @@ defmodule McFun.ChatBot do
     end
   end
 
-  defp send_paginated(bot_name, text) do
+  defp send_paginated(bot_name, text, mode \\ :chat, target \\ nil) do
     text
     |> chunk_text(@chat_line_length)
     |> Enum.take(@max_chat_lines)
     |> Enum.each(fn line ->
-      McFun.Bot.chat(bot_name, line)
+      case mode do
+        :whisper when is_binary(target) -> McFun.Bot.whisper(bot_name, target, line)
+        _ -> McFun.Bot.chat(bot_name, line)
+      end
+
       Process.sleep(300)
     end)
   end
