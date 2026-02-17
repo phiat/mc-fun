@@ -3,7 +3,7 @@ defmodule BotFarmer do
   Public API for the bot fleet manager.
 
   Thin facade delegating to McFun.Bot, McFun.ChatBot, McFun.BotBehaviors,
-  McFun.BotChat, McFun.BotSupervisor, and McFun.Presets. Dashboard code
+  McFun.FleetChat, McFun.BotSupervisor, and McFun.Presets. Dashboard code
   should call BotFarmer.* instead of reaching into internals directly.
   """
 
@@ -211,18 +211,18 @@ defmodule BotFarmer do
     McFun.BotBehaviors.info(name)
   end
 
-  # ── BotChat coordinator ──────────────────────────────────────────────
+  # ── FleetChat coordinator ──────────────────────────────────────────────
 
-  def bot_chat_status, do: McFun.BotChat.status()
-  def bot_chat_enable, do: McFun.BotChat.enable()
-  def bot_chat_disable, do: McFun.BotChat.disable()
-  def bot_chat_config(key, value), do: McFun.BotChat.update_config(key, value)
-  def inject_topic, do: McFun.BotChat.inject_topic()
-  def add_topic(t), do: McFun.BotChat.add_topic(t)
-  def remove_topic(t), do: McFun.BotChat.remove_topic(t)
-  def toggle_topic(t, on?), do: McFun.BotChat.toggle_topic(t, on?)
-  def toggle_topic_injection(on?), do: McFun.BotChat.toggle_topic_injection(on?)
-  def default_topics, do: McFun.BotChat.default_topics()
+  def bot_chat_status, do: McFun.FleetChat.status()
+  def bot_chat_enable, do: McFun.FleetChat.enable()
+  def bot_chat_disable, do: McFun.FleetChat.disable()
+  def bot_chat_config(key, value), do: McFun.FleetChat.update_config(key, value)
+  def inject_topic, do: McFun.FleetChat.inject_topic()
+  def add_topic(t), do: McFun.FleetChat.add_topic(t)
+  def remove_topic(t), do: McFun.FleetChat.remove_topic(t)
+  def toggle_topic(t, on?), do: McFun.FleetChat.toggle_topic(t, on?)
+  def toggle_topic_injection(on?), do: McFun.FleetChat.toggle_topic_injection(on?)
+  def default_topics, do: McFun.FleetChat.default_topics()
 
   # ── Presets ──────────────────────────────────────────────────────────
 

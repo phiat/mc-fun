@@ -6,7 +6,7 @@ defmodule BotFarmer.Application do
   @impl true
   def start(_type, _args) do
     children = [
-      McFun.BotChat,
+      McFun.FleetChat,
       BotFarmer.BotStore,
       {Registry, keys: :unique, name: McFun.BotRegistry},
       {DynamicSupervisor, name: McFun.BotSupervisor, strategy: :one_for_one}

@@ -84,12 +84,16 @@ mc-fun/                              # repo root = umbrella root
 │   │   ├── lib/
 │   │   │   ├── bot_farmer.ex        # Public facade API (BotFarmer.spawn_bot, etc.)
 │   │   │   ├── bot_farmer/
-│   │   │   │   ├── application.ex   # Supervisor: BotChat, BotStore, Registry, DynamicSupervisor
+│   │   │   │   ├── application.ex   # Supervisor: FleetChat, BotStore, Registry, DynamicSupervisor
 │   │   │   │   └── bot_store.ex     # Fleet persistence (bot_fleet.json) + auto-deploy
 │   │   │   └── mc_fun/              # Moved modules (keep McFun.* names)
 │   │   │       ├── bot.ex           # Mineflayer bot via Erlang Port + bridge.js
-│   │   │       ├── chat_bot.ex      # LLM chat — !ask/!model/!models/!personality/!reset/!tp
-│   │   │       ├── bot_chat.ex      # Bot-to-bot chat coordinator
+│   │   │       ├── chat_bot.ex      # LLM chat GenServer — orchestration only
+│   │   │       ├── chat_bot/        # Extracted ChatBot submodules
+│   │   │       │   ├── tools.ex     # Tool definitions + execution dispatch
+│   │   │       │   ├── context.ex   # Survey/status/chat context for LLM prompts
+│   │   │       │   └── text_filter.ex # CoT stripping, text chunking, paginated send
+│   │   │       ├── fleet_chat.ex    # Bot-to-bot chat coordinator (was bot_chat.ex)
 │   │   │       ├── action_parser.ex # Regex-based LLM response → bot action translator
 │   │   │       ├── bot_behaviors.ex # Patrol/follow/guard/mine behaviors
 │   │   │       ├── bot_supervisor.ex # DynamicSupervisor wrapper for bots
@@ -136,7 +140,7 @@ After start: `McFun.Events.Handlers.register_all()` registers default event hand
 
 **BotFarmer.Supervisor** (bot fleet — `apps/bot_farmer`):
 ```
-├── McFun.BotChat                   # Bot-to-bot chat coordinator
+├── McFun.FleetChat                   # Bot-to-bot chat coordinator
 ├── BotFarmer.BotStore              # Fleet persistence + auto-deploy
 ├── Registry (McFun.BotRegistry)
 └── DynamicSupervisor (McFun.BotSupervisor)
@@ -151,7 +155,7 @@ After start: `McFun.Events.Handlers.register_all()` registers default event hand
 
 ## Key Patterns
 
-- **BotFarmer facade**: Dashboard code calls `BotFarmer.*` (spawn_bot, stop_bot, set_model, start_patrol, bot_chat_status, etc.) instead of reaching into McFun.Bot/ChatBot/BotBehaviors/BotChat/BotSupervisor directly. Infrastructure modules (Rcon, LLM, Events, World) are still called directly via `McFun.*`.
+- **BotFarmer facade**: Dashboard code calls `BotFarmer.*` (spawn_bot, stop_bot, set_model, start_patrol, bot_chat_status, etc.) instead of reaching into McFun.Bot/ChatBot/BotBehaviors/FleetChat/BotSupervisor directly. Infrastructure modules (Rcon, LLM, Events, World) are still called directly via `McFun.*`.
 - **BotStore persistence**: `BotFarmer.BotStore` persists fleet config to `apps/bot_farmer/priv/bot_fleet.json`. On startup, auto-deploys all saved bots (staggered 2s). Writes are debounced (3s). The facade automatically calls BotStore on spawn/stop/config changes.
 - **Dashboard LiveComponents**: Each tab is a LiveComponent (`UnitsPanelLive`, `RconConsoleLive`, `EventStreamLive`, `ChatPanelLive`, `EffectsPanelLive`, `DisplayPanelLive`) plus `BotConfigModalLive` for the config modal. Components receive `parent_pid` and communicate back via `send(parent_pid, msg)` for flash/refresh. Cross-tab coord sharing uses `send_update/2`. Function components (`deploy_panel`, `bot_card`) accept a `target` attr for `phx-target` routing.
 - **Bot registry keys**: `"BotName"` (Bot), `{:chat_bot, "BotName"}` (ChatBot), `{:behavior, "BotName"}` (BotBehaviors)

@@ -14,6 +14,7 @@ defmodule McFun.ChatBot do
   Whispers always trigger a response (no prefix needed).
   """
 
+  alias McFun.ChatBot.{Context, TextFilter, Tools}
   alias McFun.LLM.Groq
   alias McFun.LLM.ModelCache
   use GenServer, restart: :temporary
@@ -23,8 +24,6 @@ defmodule McFun.ChatBot do
   @max_players 50
   @conversation_ttl_ms :timer.hours(1)
   @rate_limit_ms 2_000
-  @chat_line_length 180
-  @max_chat_lines 4
   @fallback_model "openai/gpt-oss-20b"
 
   @heartbeat_initial_delay_ms 5_000
@@ -91,15 +90,18 @@ defmodule McFun.ChatBot do
     GenServer.call(via(bot_name), {:toggle_group_chat, enabled?})
   end
 
-  @doc "Inject a message from another bot into this bot's conversation (used by BotChat coordinator)."
+  @doc "Inject a message from another bot into this bot's conversation (used by FleetChat coordinator)."
   def inject_bot_message(bot_name, from_bot, message) do
     GenServer.cast(via(bot_name), {:inject_bot_message, from_bot, message})
   end
 
-  @doc "Inject a topic for the bot to respond to naturally via LLM (used by BotChat topic injection)."
+  @doc "Inject a topic for the bot to respond to naturally via LLM (used by FleetChat topic injection)."
   def inject_topic(bot_name, topic) do
     GenServer.cast(via(bot_name), {:inject_topic, topic})
   end
+
+  @doc "Returns the list of heartbeat prompt strings (used by FleetChat to filter)."
+  def heartbeat_prompts, do: @heartbeat_prompts
 
   defp via(bot_name), do: {:via, Registry, {McFun.BotRegistry, {:chat_bot, bot_name}}}
 
@@ -209,7 +211,7 @@ defmodule McFun.ChatBot do
          %{"event" => "whisper", "username" => username, "message" => message}},
         state
       ) do
-    if McFun.BotChat.claim_whisper(state.bot_name, username, message) do
+    if McFun.FleetChat.claim_whisper(state.bot_name, username, message) do
       Logger.info("ChatBot #{state.bot_name}: WHISPER from #{username}: #{inspect(message)}")
       state = handle_message(state, username, message, :whisper)
       {:noreply, state}
@@ -225,7 +227,7 @@ defmodule McFun.ChatBot do
   # LLM response with tool calls
   @impl true
   def handle_info({:llm_response, username, {:ok, response, tool_calls}, mode}, state) do
-    reply = strip_thinking(response)
+    reply = TextFilter.strip_thinking(response)
 
     # Broadcast stripped response to dashboard
     tools_str =
@@ -235,7 +237,6 @@ defmodule McFun.ChatBot do
 
     # Send chat and execute tools asynchronously to avoid blocking ChatBot
     bot_name = state.bot_name
-
     model = state.model
     personality = state.personality
 
@@ -255,13 +256,13 @@ defmodule McFun.ChatBot do
           fetch_followup_chat(bot_name, personality, model, tool_names, username)
         end
 
-      send_paginated(bot_name, chat_reply, mode, username)
+      TextFilter.send_paginated(bot_name, chat_reply, mode, username)
 
       for %{name: name, args: args} <- tool_calls do
         Logger.info("ChatBot #{bot_name}: tool call #{name}(#{inspect(args)})")
 
         try do
-          execute_tool(bot_name, name, args, username)
+          Tools.execute(bot_name, name, args, username)
         catch
           kind, reason ->
             Logger.warning("ChatBot #{bot_name}: tool #{name} failed: #{kind} #{inspect(reason)}")
@@ -276,7 +277,7 @@ defmodule McFun.ChatBot do
   # LLM response text only (no tool calls) — fall back to regex parser
   @impl true
   def handle_info({:llm_response, username, {:ok, response}, mode}, state) do
-    reply = strip_thinking(response)
+    reply = TextFilter.strip_thinking(response)
 
     # Fallback: regex-based action parsing for models without tool support
     parsed_actions = McFun.ActionParser.parse(reply, username)
@@ -297,7 +298,7 @@ defmodule McFun.ChatBot do
     bot_name = state.bot_name
 
     Task.start(fn ->
-      send_paginated(bot_name, reply, mode, username)
+      TextFilter.send_paginated(bot_name, reply, mode, username)
 
       if parsed_actions != [] do
         McFun.ActionParser.execute(parsed_actions, bot_name)
@@ -337,15 +338,13 @@ defmodule McFun.ChatBot do
       pid = self()
 
       Task.start(fn ->
-        survey_context = fetch_survey(bot_name)
-        bot_status = format_bot_status(bot_name)
+        context = Context.build(bot_name)
 
         system_prompt =
           personality <>
             "\n\nYou are thinking out loud in Minecraft chat. " <>
             "Keep it to 1-2 sentences. No markdown. Be fun and in-character.\n" <>
-            survey_context <>
-            bot_status <>
+            context <>
             "\n\nPrompt: #{prompt}"
 
         result =
@@ -362,37 +361,15 @@ defmodule McFun.ChatBot do
     end
   end
 
+  # Heartbeat responses (ok with or without tool_calls)
   @impl true
   def handle_info({:heartbeat_response, {:ok, text}}, state) do
-    reply = strip_thinking(text)
-
-    if reply != "" do
-      bot_name = state.bot_name
-      Task.start(fn -> send_paginated(bot_name, reply) end)
-
-      broadcast_llm_event(state.bot_name, nil, reply, "heartbeat")
-    end
-
-    now = System.monotonic_time(:millisecond)
-    state = state |> track_last_message(text) |> Map.put(:last_heartbeat, now)
-    {:noreply, schedule_heartbeat(state)}
+    {:noreply, handle_ambient_response(state, text, "heartbeat") |> schedule_heartbeat()}
   end
 
   @impl true
   def handle_info({:heartbeat_response, {:ok, text, _tool_calls}}, state) do
-    # Heartbeat shouldn't use tools, but handle gracefully
-    reply = strip_thinking(text)
-
-    if reply != "" do
-      bot_name = state.bot_name
-      Task.start(fn -> send_paginated(bot_name, reply) end)
-
-      broadcast_llm_event(state.bot_name, nil, reply, "heartbeat")
-    end
-
-    now = System.monotonic_time(:millisecond)
-    state = state |> track_last_message(text) |> Map.put(:last_heartbeat, now)
-    {:noreply, schedule_heartbeat(state)}
+    {:noreply, handle_ambient_response(state, text, "heartbeat") |> schedule_heartbeat()}
   end
 
   @impl true
@@ -401,31 +378,15 @@ defmodule McFun.ChatBot do
     {:noreply, schedule_heartbeat(state)}
   end
 
-  # Topic injection responses
+  # Topic injection responses (ok with or without tool_calls)
   @impl true
   def handle_info({:topic_response, {:ok, text}}, state) do
-    reply = strip_thinking(text)
-
-    if reply != "" do
-      bot_name = state.bot_name
-      Task.start(fn -> send_paginated(bot_name, reply) end)
-      broadcast_llm_event(state.bot_name, nil, reply, "topic")
-    end
-
-    {:noreply, track_last_message(state, text)}
+    {:noreply, handle_ambient_response(state, text, "topic")}
   end
 
   @impl true
   def handle_info({:topic_response, {:ok, text, _tool_calls}}, state) do
-    reply = strip_thinking(text)
-
-    if reply != "" do
-      bot_name = state.bot_name
-      Task.start(fn -> send_paginated(bot_name, reply) end)
-      broadcast_llm_event(state.bot_name, nil, reply, "topic")
-    end
-
-    {:noreply, track_last_message(state, text)}
+    {:noreply, handle_ambient_response(state, text, "topic")}
   end
 
   @impl true
@@ -446,8 +407,7 @@ defmodule McFun.ChatBot do
     pid = self()
 
     Task.start(fn ->
-      survey_context = fetch_survey(bot_name)
-      bot_status = format_bot_status(bot_name)
+      context = Context.build(bot_name)
 
       system_prompt =
         personality <>
@@ -455,8 +415,7 @@ defmodule McFun.ChatBot do
           "Respond naturally and in-character. Share your thoughts, ask a follow-up question, " <>
           "or riff on the idea. Do NOT repeat the topic back. " <>
           "Keep it to 1-2 sentences. No markdown. Be fun and in-character.\n" <>
-          survey_context <>
-          bot_status <>
+          context <>
           "\n\nTopic: #{topic}"
 
       result =
@@ -472,7 +431,7 @@ defmodule McFun.ChatBot do
     {:noreply, state}
   end
 
-  # Bot-to-bot message injection from BotChat coordinator
+  # Bot-to-bot message injection from FleetChat coordinator
   @impl true
   def handle_cast({:inject_bot_message, from_bot, message}, state) do
     now = System.monotonic_time(:millisecond)
@@ -484,6 +443,20 @@ defmodule McFun.ChatBot do
     state = add_to_history(state, from_bot, message)
     spawn_response(state, from_bot)
     {:noreply, %{state | last_response: now}}
+  end
+
+  # Shared handler for heartbeat and topic ambient responses
+  defp handle_ambient_response(state, text, tag) do
+    reply = TextFilter.strip_thinking(text)
+
+    if reply != "" do
+      bot_name = state.bot_name
+      Task.start(fn -> TextFilter.send_paginated(bot_name, reply) end)
+      broadcast_llm_event(state.bot_name, nil, reply, tag)
+    end
+
+    now = System.monotonic_time(:millisecond)
+    %{track_last_message(state, text) | last_response: now}
   end
 
   # Rate limiting
@@ -584,7 +557,7 @@ defmodule McFun.ChatBot do
     end
   end
 
-  # Regular chat — handled by BotChat coordinator for bot-to-bot; ignored here
+  # Regular chat — handled by FleetChat coordinator for bot-to-bot; ignored here
   defp handle_message(state, _username, _message, :chat), do: state
 
   # LLM interaction
@@ -606,20 +579,18 @@ defmodule McFun.ChatBot do
       "ChatBot #{state.bot_name}: sending to Groq [#{model}] for #{username} (#{length(messages)} msgs)"
     )
 
-    use_tools = supports_tools?(model)
-    tools = if use_tools, do: bot_tools(), else: nil
+    use_tools = Tools.supports_tools?(model)
+    tools = if use_tools, do: Tools.definitions(), else: nil
     bot_name = state.bot_name
 
     Task.start_link(fn ->
       # Get environment context
-      survey_context = fetch_survey(bot_name)
-      bot_status = format_bot_status(bot_name)
-      chat_history = format_recent_chat(history)
+      context = Context.build(bot_name, history: history)
 
       system_prompt =
         state.personality <>
           "\n\n" <>
-          action_instructions(use_tools) <> survey_context <> bot_status <> chat_history
+          Tools.action_instructions(use_tools) <> context
 
       result =
         Groq.chat(system_prompt, messages,
@@ -648,7 +619,7 @@ defmodule McFun.ChatBot do
   end
 
   defp track_last_message(state, text) do
-    stripped = strip_thinking(text)
+    stripped = TextFilter.strip_thinking(text)
     if stripped != "", do: %{state | last_message: stripped}, else: state
   end
 
@@ -683,69 +654,6 @@ defmodule McFun.ChatBot do
     %{state | conversations: conversations, last_active: last_active}
   end
 
-  # Strip chain-of-thought from reasoning models.
-  # Expects "REPLY: actual message" format; falls back to last sentence if no marker.
-  defp strip_thinking(text) do
-    cond do
-      # Explicit REPLY: marker
-      String.contains?(text, "REPLY:") ->
-        text
-        |> String.split("REPLY:")
-        |> List.last()
-        |> String.trim()
-
-      # Looks like thinking (starts with analysis of the request)
-      Regex.match?(~r/^(The |We |User|They |I need|Let me|So |OK )/i, String.trim(text)) ->
-        # Try to find the actual response after the thinking
-        # Often it's the last quoted string or sentence after reasoning
-        case Regex.run(~r/["""]([^"""]+)["""]/, text) do
-          [_, quoted] -> String.trim(quoted)
-          nil -> text
-        end
-
-      true ->
-        text
-    end
-  end
-
-  defp send_paginated(bot_name, text, mode \\ :chat, target \\ nil) do
-    text
-    |> chunk_text(@chat_line_length)
-    |> Enum.take(@max_chat_lines)
-    |> Enum.each(fn line ->
-      case mode do
-        :whisper when is_binary(target) -> McFun.Bot.whisper(bot_name, target, line)
-        _ -> McFun.Bot.chat(bot_name, line)
-      end
-
-      Process.sleep(300)
-    end)
-  end
-
-  defp chunk_text(text, max_len) do
-    words = String.split(text)
-    chunk_words(words, max_len, "", [])
-  end
-
-  defp chunk_words([], _max, "", acc), do: Enum.reverse(acc)
-  defp chunk_words([], _max, current, acc), do: Enum.reverse([current | acc])
-
-  defp chunk_words([word | rest], max, current, acc) do
-    candidate =
-      if current == "", do: word, else: current <> " " <> word
-
-    if String.length(candidate) <= max do
-      chunk_words(rest, max, candidate, acc)
-    else
-      if current == "" do
-        # Single word longer than max — force it in
-        chunk_words(rest, max, "", [word | acc])
-      else
-        chunk_words([word | rest], max, "", [current | acc])
-      end
-    end
-  end
-
   defp fetch_followup_chat(bot_name, personality, model, tool_names, username) do
     system_prompt =
       personality <>
@@ -761,11 +669,11 @@ defmodule McFun.ChatBot do
            bot_name: bot_name
          ) do
       {:ok, text} ->
-        reply = strip_thinking(text)
+        reply = TextFilter.strip_thinking(text)
         if reply != "", do: reply, else: "On it!"
 
       {:ok, text, _tools} ->
-        reply = strip_thinking(text)
+        reply = TextFilter.strip_thinking(text)
         if reply != "", do: reply, else: "On it!"
 
       {:error, reason} ->
@@ -805,111 +713,6 @@ defmodule McFun.ChatBot do
     Phoenix.PubSub.broadcast(McFun.PubSub, "bot:#{bot_name}", {:bot_event, bot_name, event})
   end
 
-  defp fetch_survey(bot_name) do
-    case McFun.Bot.survey(bot_name) do
-      {:ok, survey} -> format_survey(survey)
-      _ -> ""
-    end
-  catch
-    _, _ -> ""
-  end
-
-  defp format_survey(s) do
-    [
-      "\n[ENVIRONMENT]",
-      format_position(s["position"]),
-      format_looking_at(s["looking_at"]),
-      format_block_list(s["blocks"]),
-      format_inventory(s["inventory"]),
-      format_entities(s["entities"]),
-      format_vitals(s["health"], s["food"])
-    ]
-    |> List.flatten()
-    |> Enum.join("\n")
-  end
-
-  defp format_position(%{"x" => x, "y" => y, "z" => z}), do: "Position: #{x}, #{y}, #{z}"
-  defp format_position(_), do: []
-
-  defp format_looking_at(nil), do: []
-  defp format_looking_at(block), do: "Looking at: #{block}"
-
-  defp format_block_list(list) when is_list(list) and list != [],
-    do: "Nearby blocks: #{Enum.join(list, ", ")}"
-
-  defp format_block_list(_), do: []
-
-  defp format_inventory(list) when is_list(list) and list != [] do
-    inv = Enum.map_join(list, ", ", fn i -> "#{i["name"]}x#{i["count"]}" end)
-    "Inventory: #{inv}"
-  end
-
-  defp format_inventory(_), do: []
-
-  defp format_entities(list) when is_list(list) and list != [] do
-    ents = Enum.map_join(list, ", ", fn e -> "#{e["name"]}(#{e["distance"]}m)" end)
-    "Nearby entities: #{ents}"
-  end
-
-  defp format_entities(_), do: []
-
-  defp format_vitals(nil, _), do: []
-  defp format_vitals(health, food), do: "Health: #{trunc(health)}/20, Food: #{food}/20"
-
-  defp format_bot_status(bot_name) do
-    action_str =
-      case McFun.Bot.current_action(bot_name) do
-        %{action: action, source: source, started_at: started_at} ->
-          elapsed = DateTime.diff(DateTime.utc_now(), started_at, :second)
-          "Current action: #{action} (#{source}-initiated, started #{elapsed}s ago)"
-
-        nil ->
-          "Current action: idle"
-      end
-
-    behavior_str =
-      case McFun.BotBehaviors.info(bot_name) do
-        %{behavior: behavior} ->
-          paused =
-            case McFun.Bot.current_action(bot_name) do
-              %{source: :tool} -> " (paused - tool action in progress)"
-              _ -> ""
-            end
-
-          "Active behavior: #{behavior}#{paused}"
-
-        _ ->
-          "Active behavior: none"
-      end
-
-    "\n[BOT STATUS]\n#{action_str}\n#{behavior_str}"
-  end
-
-  @recent_chat_limit 10
-  defp format_recent_chat(history) do
-    entries =
-      history
-      |> Enum.take(@recent_chat_limit)
-      |> Enum.reverse()
-      |> Enum.map(fn
-        {:player, msg} -> "Player: #{msg}"
-        {:bot, msg} -> "Bot: #{msg}"
-      end)
-
-    case entries do
-      [] -> ""
-      lines -> "\n[RECENT CHAT]\n" <> Enum.join(lines, "\n")
-    end
-  end
-
-  # Models that support OpenAI-style tool/function calling.
-  # Compound models do internal tool calling (websearch etc) and reject external tools.
-  @tool_capable_prefixes ~w(llama qwen openai/ meta-llama/ moonshotai/)
-
-  defp supports_tools?(model_id) do
-    Enum.any?(@tool_capable_prefixes, &String.starts_with?(model_id, &1))
-  end
-
   # Reasoning models need more tokens for chain-of-thought
   defp max_tokens_for(model_id) do
     cap = chat_bot_config(:max_response_tokens)
@@ -918,295 +721,6 @@ defmodule McFun.ChatBot do
       {:ok, %{"max_completion_tokens" => max}} -> min(max, cap)
       _ -> div(cap, 2)
     end
-  end
-
-  # Tool calling
-
-  defp bot_tools do
-    [
-      tool(
-        "goto_player",
-        "Move to a player's location",
-        %{
-          "player" => %{"type" => "string", "description" => "Player name to move to"}
-        },
-        ["player"]
-      ),
-      tool(
-        "follow_player",
-        "Follow a player around continuously",
-        %{
-          "player" => %{"type" => "string", "description" => "Player name to follow"}
-        },
-        ["player"]
-      ),
-      tool("dig", "Dig/mine the block you are looking at", %{}, []),
-      tool(
-        "find_and_dig",
-        "Find the nearest block of a type and mine it",
-        %{
-          "block_type" => %{
-            "type" => "string",
-            "description" =>
-              "Block type to find and mine, e.g. coal_ore, iron_ore, diamond_ore, oak_log"
-          }
-        },
-        ["block_type"]
-      ),
-      tool(
-        "dig_area",
-        "Dig a rectangular area (room/tunnel). Digs from your current position.",
-        %{
-          "width" => %{"type" => "integer", "description" => "Width (X axis), max 20"},
-          "height" => %{
-            "type" => "integer",
-            "description" => "Height (Y axis), max 10, default 3"
-          },
-          "depth" => %{"type" => "integer", "description" => "Depth (Z axis), max 20"}
-        },
-        ["width", "depth"]
-      ),
-      tool("jump", "Jump once", %{}, []),
-      tool("attack", "Attack the nearest entity", %{}, []),
-      tool(
-        "look",
-        "Turn to face a direction. Use yaw: 0=south, 1.57=west, 3.14=north, -1.57=east. Pitch: 0=level, -0.5=up, 0.5=down. Use to turn around before digging.",
-        %{
-          "yaw" => %{
-            "type" => "number",
-            "description" =>
-              "Horizontal angle in radians. 0=south, 1.57=west, 3.14=north, -1.57=east"
-          },
-          "pitch" => %{
-            "type" => "number",
-            "description" => "Vertical angle in radians. 0=level, negative=up, positive=down"
-          }
-        },
-        ["yaw"]
-      ),
-      tool(
-        "drop",
-        "Drop/throw the currently held item on the ground. Only use when explicitly asked to drop or throw items.",
-        %{},
-        []
-      ),
-      tool(
-        "drop_item",
-        "Drop a specific item from inventory by name. Optionally specify a count, otherwise drops the entire stack.",
-        %{
-          "item_name" => %{
-            "type" => "string",
-            "description" => "Item name (e.g. cobblestone, diamond)"
-          },
-          "count" => %{
-            "type" => "integer",
-            "description" => "Number to drop (omit for entire stack)"
-          }
-        },
-        ["item_name"]
-      ),
-      tool(
-        "drop_all",
-        "Drop ALL items from inventory onto the ground. Only use when explicitly asked to empty inventory.",
-        %{},
-        []
-      ),
-      tool("sneak", "Toggle sneaking/crouching", %{}, []),
-      tool(
-        "craft",
-        "Craft an item",
-        %{
-          "item" => %{
-            "type" => "string",
-            "description" => "Item name to craft, e.g. wooden_pickaxe"
-          }
-        },
-        ["item"]
-      ),
-      tool(
-        "equip",
-        "Equip an item from inventory",
-        %{
-          "item" => %{
-            "type" => "string",
-            "description" => "Item name to equip, e.g. diamond_sword"
-          }
-        },
-        ["item"]
-      ),
-      tool(
-        "activate_block",
-        "Interact with a block at coordinates (press button, flip lever, open chest/door)",
-        %{
-          "x" => %{"type" => "integer", "description" => "X coordinate"},
-          "y" => %{"type" => "integer", "description" => "Y coordinate"},
-          "z" => %{"type" => "integer", "description" => "Z coordinate"}
-        },
-        ["x", "y", "z"]
-      ),
-      tool(
-        "use_item",
-        "Use the currently held item (eat food, throw, use)",
-        %{},
-        []
-      ),
-      tool(
-        "sleep",
-        "Sleep in a nearby bed (must be within 4 blocks and nighttime)",
-        %{},
-        []
-      ),
-      tool(
-        "wake",
-        "Wake up from a bed",
-        %{},
-        []
-      ),
-      tool(
-        "stop",
-        "Stop the current action (digging, moving, following). Use when asked to stop or cancel.",
-        %{},
-        []
-      )
-    ]
-  end
-
-  defp tool(name, description, properties, required) do
-    %{
-      type: "function",
-      function: %{
-        name: name,
-        description: description,
-        parameters: %{
-          type: "object",
-          properties: properties,
-          required: required
-        }
-      }
-    }
-  end
-
-  defp execute_tool(bot, "goto_player", %{"player" => player}, _username) do
-    McFun.Bot.send_command(bot, %{action: "goto", target: player}, source: :tool)
-  end
-
-  defp execute_tool(bot, "goto_player", _args, username) do
-    McFun.Bot.send_command(bot, %{action: "goto", target: username}, source: :tool)
-  end
-
-  defp execute_tool(bot, "follow_player", %{"player" => player}, _username) do
-    McFun.Bot.send_command(bot, %{action: "follow", target: player}, source: :tool)
-  end
-
-  defp execute_tool(bot, "follow_player", _args, username) do
-    McFun.Bot.send_command(bot, %{action: "follow", target: username}, source: :tool)
-  end
-
-  defp execute_tool(bot, "dig", _args, _username) do
-    McFun.Bot.send_command(bot, %{action: "dig_looking_at"}, source: :tool)
-  end
-
-  defp execute_tool(bot, "find_and_dig", %{"block_type" => block_type}, _username) do
-    McFun.Bot.send_command(bot, %{action: "find_and_dig", block_type: block_type}, source: :tool)
-  end
-
-  defp execute_tool(bot, "dig_area", args, _username) do
-    McFun.Bot.dig_area(bot, args, source: :tool)
-  end
-
-  defp execute_tool(bot, "jump", _args, _username) do
-    McFun.Bot.send_command(bot, %{action: "jump"}, source: :tool)
-  end
-
-  defp execute_tool(bot, "attack", _args, _username) do
-    McFun.Bot.send_command(bot, %{action: "attack"}, source: :tool)
-  end
-
-  defp execute_tool(bot, "look", args, _username) do
-    yaw = args["yaw"] || 0
-    pitch = args["pitch"] || 0
-    McFun.Bot.send_command(bot, %{action: "look", yaw: yaw, pitch: pitch}, source: :tool)
-  end
-
-  defp execute_tool(bot, "drop", _args, _username) do
-    McFun.Bot.drop(bot)
-  end
-
-  defp execute_tool(bot, "drop_item", args, _username) do
-    item_name = args["item_name"]
-    count = args["count"]
-    McFun.Bot.drop_item(bot, item_name, count)
-  end
-
-  defp execute_tool(bot, "drop_all", _args, _username) do
-    McFun.Bot.drop_all(bot)
-  end
-
-  defp execute_tool(bot, "sneak", _args, _username) do
-    McFun.Bot.send_command(bot, %{action: "sneak"}, source: :tool)
-  end
-
-  defp execute_tool(bot, "craft", %{"item" => item}, _username) do
-    McFun.Bot.craft(bot, item)
-  end
-
-  defp execute_tool(bot, "equip", %{"item" => item}, _username) do
-    McFun.Bot.equip(bot, item)
-  end
-
-  defp execute_tool(bot, "activate_block", %{"x" => x, "y" => y, "z" => z}, _username) do
-    McFun.Bot.send_command(bot, %{action: "activate_block", x: x, y: y, z: z}, source: :tool)
-  end
-
-  defp execute_tool(bot, "use_item", _args, _username) do
-    McFun.Bot.send_command(bot, %{action: "use_item"}, source: :tool)
-  end
-
-  defp execute_tool(bot, "sleep", _args, _username) do
-    McFun.Bot.send_command(bot, %{action: "sleep"}, source: :tool)
-  end
-
-  defp execute_tool(bot, "wake", _args, _username) do
-    McFun.Bot.send_command(bot, %{action: "wake"}, source: :tool)
-  end
-
-  defp execute_tool(bot, "stop", _args, _username) do
-    McFun.Bot.stop_action(bot)
-  end
-
-  defp execute_tool(_bot, name, args, _username) do
-    Logger.warning("ChatBot: unknown tool call #{name}(#{inspect(args)})")
-  end
-
-  defp action_instructions(true = _use_tools) do
-    """
-    You control a real bot. When a player asks you to do something physical, use the appropriate tool. IMPORTANT: You MUST always include a text response in addition to any tool calls — never return only a tool call with no message. Available tools: goto_player, follow_player, dig, find_and_dig, dig_area (width/height/depth for rooms/tunnels), look (turn to face a direction — use before digging in a new direction), jump, attack, drop (ONLY when asked to drop items), sneak, craft, equip, activate_block (buttons/levers/chests/doors at x,y,z), use_item (eat/use held item), sleep (nearby bed), wake, stop. Use 'stop' when the player asks you to stop or cancel. Use 'look' to turn around (yaw=3.14 for 180° turn) before digging in a new direction. NEVER use 'drop' unless the player explicitly asks to drop or throw items.
-
-    CRITICAL: Your response MUST start with "REPLY:" followed by your chat message. Do NOT include any thinking, reasoning, or analysis. Only output what the player should see.
-    Example: REPLY: Sure thing, I'll dig that for you!
-    """
-  end
-
-  defp action_instructions(false) do
-    """
-    You control a real bot. To perform actions, you MUST include the exact trigger phrase in your response. One action per response.
-
-    TRIGGER PHRASES (use exactly):
-    "on my way" or "coming to you" → move to the player
-    "I'll follow" or "following you" → follow the player
-    "I'll dig" or "mining" → dig the block you're looking at
-    "I'll jump" → jump
-    "I'll attack" or "attacking" → attack nearest entity
-    "I'll drop" or "dropping" → drop held item
-    "sneaking" → sneak/crouch
-    "I'll craft [item]" → craft an item
-    "I'll equip [item]" → equip an item
-
-    If a player asks you to do something physical, ALWAYS include the trigger phrase.
-
-    CRITICAL: Your response MUST start with "REPLY:" followed by your chat message. Do NOT include any thinking, reasoning, or analysis. Only output what the player should see.
-    Example: REPLY: On my way, I'll dig that block!
-    """
   end
 
   defp default_personality do

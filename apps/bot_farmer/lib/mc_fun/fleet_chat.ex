@@ -1,4 +1,4 @@
-defmodule McFun.BotChat do
+defmodule McFun.FleetChat do
   @moduledoc """
   Centralized bot-to-bot chat coordinator.
 
@@ -11,17 +11,6 @@ defmodule McFun.BotChat do
   require Logger
 
   @refresh_interval_ms 5_000
-
-  @heartbeat_prompts [
-    "What are you doing right now? Give a quick update.",
-    "What's something interesting you notice around you?",
-    "What's on your mind right now?",
-    "Share a random fun fact related to what you see.",
-    "Freestyle a quick 2-line rap about your situation.",
-    "What would you suggest doing next around here?",
-    "Rate your current mood on a scale and explain why.",
-    "Describe your surroundings like a nature documentary narrator."
-  ]
 
   @default_topics [
     "Hey, what do you think about this area?",
@@ -45,7 +34,7 @@ defmodule McFun.BotChat do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  @doc "Get current BotChat coordinator status."
+  @doc "Get current FleetChat coordinator status."
   def status do
     GenServer.call(__MODULE__, :status)
   catch
@@ -116,7 +105,8 @@ defmodule McFun.BotChat do
       topic_timer_ref: nil,
       subscribed_bots: MapSet.new(),
       pending_responses: MapSet.new(),
-      recent_whispers: %{}
+      recent_whispers: %{},
+      recent_chats: %{}
     }
 
     Process.send_after(self(), :refresh_subscriptions, 1_000)
@@ -128,7 +118,7 @@ defmodule McFun.BotChat do
         state
       end
 
-    Logger.info("BotChat coordinator started (enabled: #{state.enabled})")
+    Logger.info("FleetChat coordinator started (enabled: #{state.enabled})")
     {:ok, state}
   end
 
@@ -148,14 +138,14 @@ defmodule McFun.BotChat do
 
   @impl true
   def handle_call(:enable, _from, state) do
-    Logger.info("BotChat coordinator enabled")
+    Logger.info("FleetChat coordinator enabled")
     broadcast_update(%{state | enabled: true})
     {:reply, :ok, %{state | enabled: true}}
   end
 
   @impl true
   def handle_call(:disable, _from, state) do
-    Logger.info("BotChat coordinator disabled")
+    Logger.info("FleetChat coordinator disabled")
     broadcast_update(%{state | enabled: false})
     {:reply, :ok, %{state | enabled: false}}
   end
@@ -176,7 +166,7 @@ defmodule McFun.BotChat do
   def handle_call({:add_topic, topic}, _from, state) do
     topics = [topic | state.custom_topics] |> Enum.uniq()
     new_state = %{state | custom_topics: topics}
-    Logger.info("BotChat: added custom topic: #{inspect(topic)} (#{length(topics)} custom total)")
+    Logger.info("FleetChat: added custom topic: #{inspect(topic)} (#{length(topics)} custom total)")
     broadcast_update(new_state)
     {:reply, :ok, new_state}
   end
@@ -207,10 +197,10 @@ defmodule McFun.BotChat do
   def handle_call({:toggle_topic_injection, enabled?}, _from, state) do
     state =
       if enabled? do
-        Logger.info("BotChat topic injection enabled")
+        Logger.info("FleetChattopic injection enabled")
         schedule_topic_injection(state)
       else
-        Logger.info("BotChat topic injection disabled")
+        Logger.info("FleetChattopic injection disabled")
 
         if state.topic_timer_ref do
           Process.cancel_timer(state.topic_timer_ref)
@@ -242,23 +232,36 @@ defmodule McFun.BotChat do
         {:reply, true, %{state | recent_whispers: recent}}
 
       {other_bot, _ts} ->
-        Logger.debug("BotChat: whisper from #{username} already claimed by #{other_bot}, skipping #{bot_name}")
+        Logger.debug("FleetChat: whisper from #{username} already claimed by #{other_bot}, skipping #{bot_name}")
         {:reply, false, %{state | recent_whispers: recent}}
     end
   end
 
-  # Chat event from a bot
+  # Chat event from a bot — the event arrives on the LISTENER's PubSub topic,
+  # so `listener` is which bot heard it, while `username` is who actually spoke.
+  # Multiple bots hear the same chat, so we deduplicate using recent_chats.
   @impl true
   def handle_info(
-        {:bot_event, sender, %{"event" => "chat", "message" => message}},
+        {:bot_event, _listener,
+         %{"event" => "chat", "username" => speaker, "message" => message}},
         %{enabled: true} = state
       ) do
     known_bots = MapSet.to_list(state.subscribed_bots)
+    now = System.monotonic_time(:millisecond)
+    chat_key = {speaker, message}
 
-    if sender in known_bots and not heartbeat_message?(message) do
-      {:noreply, maybe_trigger_response(state, sender, message, known_bots)}
+    # Clean old entries (>5s) and check for duplicate
+    recent_chats =
+      Map.reject(state.recent_chats, fn {_k, ts} -> now - ts > 5_000 end)
+
+    already_seen = Map.has_key?(recent_chats, chat_key)
+
+    if speaker in known_bots and not already_seen and not heartbeat_message?(message) do
+      recent_chats = Map.put(recent_chats, chat_key, now)
+      state = %{state | recent_chats: recent_chats}
+      {:noreply, maybe_trigger_response(state, speaker, message, known_bots)}
     else
-      {:noreply, state}
+      {:noreply, %{state | recent_chats: recent_chats}}
     end
   end
 
@@ -270,7 +273,7 @@ defmodule McFun.BotChat do
 
     # Verify responder still exists and has group chat enabled
     if bot_alive?(responder) and group_chat_enabled?(responder) do
-      Logger.info("BotChat: triggering #{responder} to respond to #{sender}")
+      Logger.info("FleetChat: triggering #{responder} to respond to #{sender}")
       McFun.ChatBot.inject_bot_message(responder, sender, message)
 
       # Update pair state
@@ -360,7 +363,7 @@ defmodule McFun.BotChat do
         responder = Enum.random(candidates)
         delay = Enum.random(state.config.min_delay_ms..state.config.max_delay_ms)
 
-        Logger.info("BotChat: scheduling #{responder} to respond to #{sender} in #{delay}ms")
+        Logger.info("FleetChat: scheduling #{responder} to respond to #{sender} in #{delay}ms")
 
         Process.send_after(self(), {:trigger_response, responder, sender, message}, delay)
         %{state | pending_responses: MapSet.put(state.pending_responses, responder)}
@@ -408,7 +411,7 @@ defmodule McFun.BotChat do
   end
 
   defp heartbeat_message?(message) do
-    Enum.any?(@heartbeat_prompts, &String.contains?(message, &1))
+    Enum.any?(McFun.ChatBot.heartbeat_prompts(), &String.contains?(message, &1))
   end
 
   defp do_inject_topic(state) do
@@ -421,25 +424,51 @@ defmodule McFun.BotChat do
       all_topics
       |> Enum.reject(&MapSet.member?(state.disabled_topics, &1))
 
+    # Filter to bots that actually have a chatbot attached
+    eligible_bots = Enum.filter(bots, &bot_alive?/1)
+
     Logger.info(
-      "BotChat: topic injection check — #{length(bots)} bots, " <>
+      "FleetChat: topic injection check — #{length(bots)} bots (#{length(eligible_bots)} with chatbot), " <>
         "#{length(all_topics)} total topics (#{disabled_count} disabled), " <>
         "#{length(enabled_topics)} enabled"
     )
 
-    if bots != [] and enabled_topics != [] do
-      topic = Enum.random(enabled_topics)
-      bot = Enum.random(bots)
+    inject_topic_if_ready(state, eligible_bots, enabled_topics)
+  end
 
-      Logger.info("BotChat: injecting topic via #{bot}: #{inspect(topic)}")
+  defp inject_topic_if_ready(state, eligible_bots, enabled_topics)
+       when eligible_bots == [] or enabled_topics == [] do
+    Logger.info("FleetChat: skipping topic injection (no eligible bots or no enabled topics)")
+    state
+  end
 
-      try do
-        McFun.ChatBot.inject_topic(bot, topic)
-      catch
-        _, _ -> :ok
-      end
-    else
-      Logger.info("BotChat: skipping topic injection (no bots or no enabled topics)")
+  defp inject_topic_if_ready(state, eligible_bots, enabled_topics) do
+    # Prefer bots that have at least one nearby peer (so the response chain works)
+    bots_with_peers =
+      Enum.filter(eligible_bots, fn bot ->
+        Enum.any?(eligible_bots, fn other ->
+          other != bot and
+            group_chat_enabled?(other) and
+            bot_nearby?(bot, other, state.config.proximity)
+        end)
+      end)
+
+    candidates = if bots_with_peers != [], do: bots_with_peers, else: eligible_bots
+    topic = Enum.random(enabled_topics)
+    bot = Enum.random(candidates)
+
+    if bots_with_peers == [] do
+      Logger.warning(
+        "FleetChat: no bots with nearby peers found, injecting topic via #{bot} anyway"
+      )
+    end
+
+    Logger.info("FleetChat: injecting topic via #{bot}: #{inspect(topic)}")
+
+    try do
+      McFun.ChatBot.inject_topic(bot, topic)
+    catch
+      _, _ -> :ok
     end
 
     state
@@ -451,7 +480,7 @@ defmodule McFun.BotChat do
     end
 
     interval = state.config.topic_interval_ms
-    Logger.info("BotChat: next topic injection in #{div(interval, 1000)}s")
+    Logger.info("FleetChat: next topic injection in #{div(interval, 1000)}s")
     ref = Process.send_after(self(), :inject_topic, interval)
     %{state | topic_timer_ref: ref, topic_injection_enabled: true}
   end
