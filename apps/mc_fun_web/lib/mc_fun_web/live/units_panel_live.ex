@@ -16,7 +16,8 @@ defmodule McFunWeb.UnitsPanelLive do
      |> assign_new(:pending_card_models, fn -> %{} end)
      |> assign_new(:failed_bots, fn -> %{} end)
      |> assign_new(:bot_chat_status, fn -> %{enabled: false, pairs: %{}, config: %{}} end)
-     |> assign_new(:new_topic, fn -> "" end)}
+     |> assign_new(:new_topic, fn -> "" end)
+     |> assign_new(:interaction_open, fn -> false end)}
   end
 
   @impl true
@@ -32,160 +33,6 @@ defmodule McFunWeb.UnitsPanelLive do
         bot_spawn_name={@bot_spawn_name}
         target={@myself}
       />
-
-      <%!-- Bot Interaction Config --%>
-      <div class="border-2 border-[#aa66ff]/20 bg-[#0d0d14] p-4">
-        <div class="flex items-center justify-between mb-3">
-          <div class="text-[10px] tracking-widest text-[#aa66ff]/60">BOT INTERACTION</div>
-          <button
-            phx-click="toggle_bot_chat"
-            phx-target={@myself}
-            class={"px-4 py-1 border text-[10px] tracking-widest transition-all " <>
-              if(@bot_chat_status[:enabled],
-                do: "border-[#00ff88] text-[#00ff88] hover:bg-[#00ff88]/10",
-                else: "border-[#ff4444] text-[#ff4444] hover:bg-[#ff4444]/10")}
-          >
-            {if @bot_chat_status[:enabled], do: "ON", else: "OFF"}
-          </button>
-        </div>
-
-        <div :if={@bot_chat_status[:enabled]} class="space-y-3">
-          <%!-- Config row --%>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div>
-              <label class="text-[9px] tracking-wider text-[#666] block mb-0.5">PROXIMITY</label>
-              <input
-                type="number"
-                value={get_in(@bot_chat_status, [:config, :proximity]) || 32}
-                phx-change="update_bot_chat_config"
-                phx-target={@myself}
-                phx-debounce="500"
-                name="proximity"
-                class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#aa66ff] focus:outline-none"
-              />
-            </div>
-            <div>
-              <label class="text-[9px] tracking-wider text-[#666] block mb-0.5">MAX EXCHANGES</label>
-              <input
-                type="number"
-                value={get_in(@bot_chat_status, [:config, :max_exchanges]) || 3}
-                phx-change="update_bot_chat_config"
-                phx-target={@myself}
-                phx-debounce="500"
-                name="max_exchanges"
-                class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#aa66ff] focus:outline-none"
-              />
-            </div>
-            <div>
-              <label class="text-[9px] tracking-wider text-[#666] block mb-0.5">COOLDOWN (s)</label>
-              <input
-                type="number"
-                value={div(get_in(@bot_chat_status, [:config, :cooldown_ms]) || 60000, 1000)}
-                phx-change="update_bot_chat_config"
-                phx-target={@myself}
-                phx-debounce="500"
-                name="cooldown_s"
-                class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#aa66ff] focus:outline-none"
-              />
-            </div>
-            <div>
-              <label class="text-[9px] tracking-wider text-[#666] block mb-0.5">CHANCE %</label>
-              <input
-                type="number"
-                value={trunc((get_in(@bot_chat_status, [:config, :response_chance]) || 0.7) * 100)}
-                phx-change="update_bot_chat_config"
-                phx-target={@myself}
-                phx-debounce="500"
-                name="chance_pct"
-                class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#aa66ff] focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <%!-- Topic injection --%>
-          <div class="border border-[#222] p-3">
-            <div class="flex items-center justify-between mb-2">
-              <div class="text-[9px] tracking-widest text-[#aa66ff]/80">TOPIC INJECTION</div>
-              <div class="flex gap-2">
-                <button
-                  phx-click="toggle_topic_injection"
-                  phx-target={@myself}
-                  class={"px-3 py-0.5 border text-[9px] tracking-widest transition-all " <>
-                    if(@bot_chat_status[:topic_injection_enabled],
-                      do: "border-[#00ff88] text-[#00ff88] hover:bg-[#00ff88]/10",
-                      else: "border-[#444] text-[#666] hover:text-[#aaa]")}
-                >
-                  {if @bot_chat_status[:topic_injection_enabled], do: "AUTO ON", else: "AUTO OFF"}
-                </button>
-                <button
-                  phx-click="inject_topic_now"
-                  phx-target={@myself}
-                  class="px-3 py-0.5 border border-[#aa66ff]/50 text-[#aa66ff] text-[9px] tracking-widest hover:bg-[#aa66ff]/10"
-                >
-                  INJECT NOW
-                </button>
-              </div>
-            </div>
-            <form phx-submit="add_custom_topic" phx-target={@myself} class="flex gap-2">
-              <input
-                type="text"
-                name="topic"
-                value={@new_topic}
-                placeholder="Add custom topic..."
-                class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#aa66ff] focus:outline-none placeholder:text-[#444]"
-              />
-              <button
-                type="submit"
-                class="px-3 py-1 border border-[#aa66ff]/50 text-[#aa66ff] text-[9px] tracking-widest hover:bg-[#aa66ff]/10"
-              >
-                ADD
-              </button>
-            </form>
-            <div
-              :if={(@bot_chat_status[:custom_topics] || []) != []}
-              class="mt-2 flex flex-wrap gap-1"
-            >
-              <span
-                :for={topic <- @bot_chat_status[:custom_topics] || []}
-                class="inline-flex items-center gap-1 px-2 py-0.5 bg-[#111] border border-[#333] text-[10px] text-[#aaa]"
-              >
-                {String.slice(topic, 0, 40)}{if String.length(topic) > 40, do: "..."}
-                <button
-                  phx-click="remove_custom_topic"
-                  phx-target={@myself}
-                  phx-value-topic={topic}
-                  class="text-[#ff4444]/50 hover:text-[#ff4444] text-[8px]"
-                >
-                  x
-                </button>
-              </span>
-            </div>
-          </div>
-
-          <%!-- Active pairs --%>
-          <div :if={map_size(@bot_chat_status[:pairs] || %{}) > 0} class="border border-[#222] p-3">
-            <div class="text-[9px] tracking-widest text-[#888] mb-2">ACTIVE CONVERSATIONS</div>
-            <div class="space-y-1">
-              <div
-                :for={{{a, b}, pair} <- @bot_chat_status[:pairs] || %{}}
-                class="flex items-center justify-between text-[10px]"
-              >
-                <span>
-                  <span class="text-[#00ffff]">{a}</span>
-                  <span class="text-[#555]">↔</span>
-                  <span class="text-[#00ffff]">{b}</span>
-                </span>
-                <span class="text-[#888]">
-                  {pair.count}/{get_in(@bot_chat_status, [:config, :max_exchanges]) || 3}
-                  <%= if pair[:cooldown_until] do %>
-                    <span class="text-[#ff4444] ml-1">COOLDOWN</span>
-                  <% end %>
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
       <%!-- Failed Bots --%>
       <div
@@ -240,6 +87,187 @@ defmodule McFunWeb.UnitsPanelLive do
             pending_model={@pending_card_models[bot]}
             target={@myself}
           />
+        </div>
+      </div>
+
+      <%!-- Bot Interaction Config (collapsible) --%>
+      <div class="border-2 border-[#aa66ff]/20 bg-[#0d0d14]">
+        <button
+          phx-click="toggle_interaction_panel"
+          phx-target={@myself}
+          class="w-full flex items-center justify-between px-4 py-3 hover:bg-[#aa66ff]/5 transition-all"
+        >
+          <div class="flex items-center gap-3">
+            <span class={"text-[10px] tracking-widest transition-transform " <>
+              if(@interaction_open, do: "rotate-90", else: "")}>
+              ▶
+            </span>
+            <span class="text-[10px] tracking-widest text-[#aa66ff]/60">BOT INTERACTION</span>
+            <span class={"w-1.5 h-1.5 " <>
+              if(@bot_chat_status[:enabled],
+                do: "bg-[#00ff88] shadow-[0_0_4px_#00ff88]",
+                else: "bg-[#ff4444] shadow-[0_0_4px_#ff4444]")} />
+          </div>
+          <span class={"px-3 py-0.5 border text-[9px] tracking-widest " <>
+            if(@bot_chat_status[:enabled],
+              do: "border-[#00ff88]/40 text-[#00ff88]",
+              else: "border-[#ff4444]/40 text-[#ff4444]")}>
+            {if @bot_chat_status[:enabled], do: "ON", else: "OFF"}
+          </span>
+        </button>
+
+        <div :if={@interaction_open} class="px-4 pb-4 space-y-3">
+          <div class="flex justify-end">
+            <button
+              phx-click="toggle_bot_chat"
+              phx-target={@myself}
+              class={"px-4 py-1 border text-[10px] tracking-widest transition-all " <>
+                if(@bot_chat_status[:enabled],
+                  do: "border-[#00ff88] text-[#00ff88] hover:bg-[#00ff88]/10",
+                  else: "border-[#ff4444] text-[#ff4444] hover:bg-[#ff4444]/10")}
+            >
+              {if @bot_chat_status[:enabled], do: "DISABLE", else: "ENABLE"}
+            </button>
+          </div>
+
+          <div :if={@bot_chat_status[:enabled]} class="space-y-3">
+            <%!-- Config row --%>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <label class="text-[9px] tracking-wider text-[#666] block mb-0.5">PROXIMITY</label>
+                <input
+                  type="number"
+                  value={get_in(@bot_chat_status, [:config, :proximity]) || 32}
+                  phx-change="update_bot_chat_config"
+                  phx-target={@myself}
+                  phx-debounce="500"
+                  name="proximity"
+                  class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#aa66ff] focus:outline-none"
+                />
+              </div>
+              <div>
+                <label class="text-[9px] tracking-wider text-[#666] block mb-0.5">
+                  MAX EXCHANGES
+                </label>
+                <input
+                  type="number"
+                  value={get_in(@bot_chat_status, [:config, :max_exchanges]) || 3}
+                  phx-change="update_bot_chat_config"
+                  phx-target={@myself}
+                  phx-debounce="500"
+                  name="max_exchanges"
+                  class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#aa66ff] focus:outline-none"
+                />
+              </div>
+              <div>
+                <label class="text-[9px] tracking-wider text-[#666] block mb-0.5">COOLDOWN (s)</label>
+                <input
+                  type="number"
+                  value={div(get_in(@bot_chat_status, [:config, :cooldown_ms]) || 60_000, 1000)}
+                  phx-change="update_bot_chat_config"
+                  phx-target={@myself}
+                  phx-debounce="500"
+                  name="cooldown_s"
+                  class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#aa66ff] focus:outline-none"
+                />
+              </div>
+              <div>
+                <label class="text-[9px] tracking-wider text-[#666] block mb-0.5">CHANCE %</label>
+                <input
+                  type="number"
+                  value={trunc((get_in(@bot_chat_status, [:config, :response_chance]) || 0.7) * 100)}
+                  phx-change="update_bot_chat_config"
+                  phx-target={@myself}
+                  phx-debounce="500"
+                  name="chance_pct"
+                  class="w-full bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#aa66ff] focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <%!-- Topic injection --%>
+            <div class="border border-[#222] p-3">
+              <div class="flex items-center justify-between mb-2">
+                <div class="text-[9px] tracking-widest text-[#aa66ff]/80">TOPIC INJECTION</div>
+                <div class="flex gap-2">
+                  <button
+                    phx-click="toggle_topic_injection"
+                    phx-target={@myself}
+                    class={"px-3 py-0.5 border text-[9px] tracking-widest transition-all " <>
+                      if(@bot_chat_status[:topic_injection_enabled],
+                        do: "border-[#00ff88] text-[#00ff88] hover:bg-[#00ff88]/10",
+                        else: "border-[#444] text-[#666] hover:text-[#aaa]")}
+                  >
+                    {if @bot_chat_status[:topic_injection_enabled], do: "AUTO ON", else: "AUTO OFF"}
+                  </button>
+                  <button
+                    phx-click="inject_topic_now"
+                    phx-target={@myself}
+                    class="px-3 py-0.5 border border-[#aa66ff]/50 text-[#aa66ff] text-[9px] tracking-widest hover:bg-[#aa66ff]/10"
+                  >
+                    INJECT NOW
+                  </button>
+                </div>
+              </div>
+              <form phx-submit="add_custom_topic" phx-target={@myself} class="flex gap-2">
+                <input
+                  type="text"
+                  name="topic"
+                  value={@new_topic}
+                  placeholder="Add custom topic..."
+                  class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1 text-xs focus:border-[#aa66ff] focus:outline-none placeholder:text-[#444]"
+                />
+                <button
+                  type="submit"
+                  class="px-3 py-1 border border-[#aa66ff]/50 text-[#aa66ff] text-[9px] tracking-widest hover:bg-[#aa66ff]/10"
+                >
+                  ADD
+                </button>
+              </form>
+              <div
+                :if={(@bot_chat_status[:custom_topics] || []) != []}
+                class="mt-2 flex flex-wrap gap-1"
+              >
+                <span
+                  :for={topic <- @bot_chat_status[:custom_topics] || []}
+                  class="inline-flex items-center gap-1 px-2 py-0.5 bg-[#111] border border-[#333] text-[10px] text-[#aaa]"
+                >
+                  {String.slice(topic, 0, 40)}{if String.length(topic) > 40, do: "..."}
+                  <button
+                    phx-click="remove_custom_topic"
+                    phx-target={@myself}
+                    phx-value-topic={topic}
+                    class="text-[#ff4444]/50 hover:text-[#ff4444] text-[8px]"
+                  >
+                    x
+                  </button>
+                </span>
+              </div>
+            </div>
+
+            <%!-- Active pairs --%>
+            <div :if={map_size(@bot_chat_status[:pairs] || %{}) > 0} class="border border-[#222] p-3">
+              <div class="text-[9px] tracking-widest text-[#888] mb-2">ACTIVE CONVERSATIONS</div>
+              <div class="space-y-1">
+                <div
+                  :for={{{a, b}, pair} <- @bot_chat_status[:pairs] || %{}}
+                  class="flex items-center justify-between text-[10px]"
+                >
+                  <span>
+                    <span class="text-[#00ffff]">{a}</span>
+                    <span class="text-[#555]">↔</span>
+                    <span class="text-[#00ffff]">{b}</span>
+                  </span>
+                  <span class="text-[#888]">
+                    {pair.count}/{get_in(@bot_chat_status, [:config, :max_exchanges]) || 3}
+                    <%= if pair[:cooldown_until] do %>
+                      <span class="text-[#ff4444] ml-1">COOLDOWN</span>
+                    <% end %>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -376,6 +404,12 @@ defmodule McFunWeb.UnitsPanelLive do
   def handle_event("dismiss_failed", %{"name" => name}, socket) do
     notify_parent(socket, {:clear_failed, name})
     {:noreply, socket}
+  end
+
+  # --- Bot Interaction Panel ---
+
+  def handle_event("toggle_interaction_panel", _params, socket) do
+    {:noreply, assign(socket, interaction_open: !socket.assigns.interaction_open)}
   end
 
   # --- Bot Chat Controls ---
