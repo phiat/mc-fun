@@ -88,25 +88,12 @@ defmodule McFun.ChatLog do
   end
 
   # Bot events from PubSub "bot:#{name}"
+  # When a bot hears chat, classify it: bot speech is already captured by
+  # llm_response/heartbeat events, so skip to avoid duplicates.
+  # Player chat is captured by mc_event :player_chat, so also skip.
   @impl true
-  def handle_info({:bot_event, bot_name, %{"event" => "chat"} = data}, state) do
-    username = Map.get(data, "username", "unknown")
-    message = Map.get(data, "message", "")
-    bot_names = active_bot_names()
-
-    type =
-      if username in bot_names do
-        :bot_to_bot
-      else
-        :player_chat
-      end
-
-    entry =
-      build_entry(state.next_id, username, message, type, bot_name, %{
-        "heard_by" => bot_name
-      })
-
-    {:noreply, push_entry(state, entry)}
+  def handle_info({:bot_event, _bot_name, %{"event" => "chat"}}, state) do
+    {:noreply, state}
   end
 
   def handle_info({:bot_event, bot_name, %{"event" => "whisper"} = data}, state) do

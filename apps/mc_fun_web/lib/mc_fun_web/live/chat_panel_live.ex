@@ -11,7 +11,7 @@ defmodule McFunWeb.ChatPanelLive do
       |> assign(assigns)
       |> assign_new(:show_heartbeats, fn -> false end)
       |> assign_new(:show_whispers, fn -> true end)
-      |> assign_new(:show_bot_to_bot, fn -> true end)
+      |> assign_new(:show_bot_chat, fn -> true end)
       |> assign_new(:show_system, fn -> true end)
       |> assign_new(:at_bottom, fn -> true end)
 
@@ -24,7 +24,7 @@ defmodule McFunWeb.ChatPanelLive do
       case filter do
         "heartbeats" -> :show_heartbeats
         "whispers" -> :show_whispers
-        "bot_to_bot" -> :show_bot_to_bot
+        "bot_chat" -> :show_bot_chat
         "system" -> :show_system
       end
 
@@ -60,7 +60,7 @@ defmodule McFunWeb.ChatPanelLive do
               {key, label, color} <- [
                 {"heartbeats", "HEARTBEAT", "#444"},
                 {"whispers", "WHISPER", "#ff66aa"},
-                {"bot_to_bot", "BOT↔BOT", "#aa66ff"},
+                {"bot_chat", "BOT", "#aa66ff"},
                 {"system", "SYSTEM", "#888"}
               ]
             }
@@ -172,10 +172,8 @@ defmodule McFunWeb.ChatPanelLive do
   defp bot_message(assigns) do
     border_color =
       case assigns.entry.type do
-        :llm_response -> "border-[#ffcc00]"
         :heartbeat -> "border-[#444]"
-        :bot_to_bot -> "border-[#aa66ff]"
-        _ -> "border-[#00ff88]"
+        _ -> "border-[#aa66ff]"
       end
 
     extra_classes =
@@ -201,6 +199,7 @@ defmodule McFunWeb.ChatPanelLive do
           <span class="text-[9px] text-[#444]">{format_relative_time(@entry.at)}</span>
           <span :if={@entry.type == :heartbeat} class="text-[9px] text-[#444]">HEARTBEAT</span>
           <span :if={@entry.type == :bot_to_bot} class="text-[9px] text-[#aa66ff]">BOT↔BOT</span>
+          <span :if={@entry.type == :llm_response} class="text-[9px] text-[#aa66ff]">BOT</span>
           <span class="text-[#ffcc00] text-[10px] font-bold">{@entry.from}</span>
         </div>
         <div class={"border-r-2 #{@border_color} pr-2 text-[#ccc] text-right"}>
@@ -237,7 +236,8 @@ defmodule McFunWeb.ChatPanelLive do
       case entry.type do
         :heartbeat -> assigns.show_heartbeats
         :whisper -> assigns.show_whispers
-        :bot_to_bot -> assigns.show_bot_to_bot
+        :llm_response -> assigns.show_bot_chat
+        :bot_to_bot -> assigns.show_bot_chat
         :system -> assigns.show_system
         _ -> true
       end
@@ -248,7 +248,7 @@ defmodule McFunWeb.ChatPanelLive do
     case key do
       "heartbeats" -> assigns.show_heartbeats
       "whispers" -> assigns.show_whispers
-      "bot_to_bot" -> assigns.show_bot_to_bot
+      "bot_chat" -> assigns.show_bot_chat
       "system" -> assigns.show_system
     end
   end
