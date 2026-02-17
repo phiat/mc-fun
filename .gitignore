@@ -18,6 +18,10 @@ data/
 # Debug scratch directory
 .debug/
 
+# Runtime data files
+apps/mc_fun/priv/chat_log.jsonl
+apps/mc_fun/priv/cost_data.json
+
 # Elixir / Mix
 /_build/
 /deps/
