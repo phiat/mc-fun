@@ -37,7 +37,8 @@ defmodule Mix.Tasks.Mc.Chatbot do
 
     Mix.Task.run("app.start")
 
-    case McFun.BotSupervisor.spawn_bot(name) do
+    # Dynamic calls — BotSupervisor and ChatBot live in bot_farmer, not available at compile time
+    case apply(McFun.BotSupervisor, :spawn_bot, [name]) do
       {:ok, _pid} ->
         Mix.shell().info("Bot #{name} spawned, waiting for it to join...")
         Process.sleep(2_000)

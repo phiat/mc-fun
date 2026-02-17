@@ -63,6 +63,14 @@ config :mc_fun, dev_routes: true
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 
+# Also log to file so agents/tools can read logs
+config :logger, :default_handler,
+  config: [
+    file: ~c"log/dev.log",
+    max_no_bytes: 5_242_880,
+    max_no_files: 3
+  ]
+
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.
 config :phoenix, :stacktrace_depth, 20

@@ -7,7 +7,7 @@ defmodule Mix.Tasks.Mc.Bot.Spawn do
   def run([name | _]) do
     Mix.Task.run("app.start")
 
-    case McFun.BotSupervisor.spawn_bot(name) do
+    case apply(McFun.BotSupervisor, :spawn_bot, [name]) do
       {:ok, _pid} ->
         Mix.shell().info("Bot #{name} spawned. Press Ctrl+C to stop.")
         Process.sleep(:infinity)
@@ -30,15 +30,15 @@ defmodule Mix.Tasks.Mc.Bot.Chat do
     Mix.Task.run("app.start")
     message = Enum.join(words, " ")
 
-    case McFun.BotSupervisor.spawn_bot(name) do
+    case apply(McFun.BotSupervisor, :spawn_bot, [name]) do
       {:ok, _pid} ->
         Process.sleep(3_000)
-        McFun.Bot.chat(name, message)
+        apply(McFun.Bot, :chat, [name, message])
         Process.sleep(1_000)
-        McFun.BotSupervisor.stop_bot(name)
+        apply(McFun.BotSupervisor, :stop_bot, [name])
 
       {:error, {:already_started, _}} ->
-        McFun.Bot.chat(name, message)
+        apply(McFun.Bot, :chat, [name, message])
     end
   end
 

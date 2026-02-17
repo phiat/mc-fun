@@ -197,10 +197,10 @@ defmodule McFun.FleetChat do
   def handle_call({:toggle_topic_injection, enabled?}, _from, state) do
     state =
       if enabled? do
-        Logger.info("FleetChattopic injection enabled")
+        Logger.info("FleetChat topic injection enabled")
         schedule_topic_injection(state)
       else
-        Logger.info("FleetChattopic injection disabled")
+        Logger.info("FleetChat topic injection disabled")
 
         if state.topic_timer_ref do
           Process.cancel_timer(state.topic_timer_ref)

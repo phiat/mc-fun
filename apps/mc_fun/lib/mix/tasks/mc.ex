@@ -257,7 +257,8 @@ defmodule Mix.Tasks.Mc.Status do
   end
 
   defp check_bots(shell) do
-    bots = McFun.BotSupervisor.list_bots()
+    # Dynamic call — BotSupervisor lives in bot_farmer, not available at compile time
+    bots = apply(McFun.BotSupervisor, :list_bots, [])
     shell.info("[ok] BotRegistry: #{length(bots)} bots")
   rescue
     _ -> shell.error("[FAIL] BotRegistry not available")
@@ -282,7 +283,8 @@ defmodule Mix.Tasks.Mc.Events do
     Phoenix.PubSub.subscribe(McFun.PubSub, "player_statuses")
 
     # Subscribe to known bot topics
-    for bot <- McFun.BotSupervisor.list_bots() do
+    # Dynamic call — BotSupervisor lives in bot_farmer, not available at compile time
+    for bot <- apply(McFun.BotSupervisor, :list_bots, []) do
       Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{bot}")
     end
 

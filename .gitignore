@@ -22,6 +22,9 @@ data/
 apps/mc_fun/priv/chat_log.jsonl
 apps/mc_fun/priv/cost_data.json
 
+# Logs
+/log/
+
 # Elixir / Mix
 /_build/
 /deps/
