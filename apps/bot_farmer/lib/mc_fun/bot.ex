@@ -206,7 +206,7 @@ defmodule McFun.Bot do
     host = Keyword.get(opts, :host, Keyword.get(config, :host, "localhost"))
     port_num = Keyword.get(opts, :port, Keyword.get(config, :port, 25_565))
 
-    bridge_path = Path.join(:code.priv_dir(:mc_fun), "mineflayer/bridge.js")
+    bridge_path = Path.join(:code.priv_dir(:bot_farmer), "mineflayer/bridge.js")
 
     # Merge with existing env so Node.js keeps PATH, NODE_PATH, etc.
     base_env =

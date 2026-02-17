@@ -347,7 +347,7 @@ defmodule McFunWeb.UnitsPanelLive do
         ArgumentError -> nil
       end
 
-    case preset_atom && McFun.Presets.get(preset_atom) do
+    case preset_atom && BotFarmer.get_preset(preset_atom) do
       {:ok, preset} ->
         combined =
           String.trim(default_personality()) <> "\n\n" <> String.trim(preset.system_prompt)
@@ -375,7 +375,7 @@ defmodule McFunWeb.UnitsPanelLive do
     personality = socket.assigns.deploy_personality
 
     if name in socket.assigns.bots do
-      ensure_chatbot(name, model, personality)
+      BotFarmer.attach_chatbot(name, model: model, personality: personality)
       notify_parent(socket, {:flash, :info, "#{name} already running — model: #{model}"})
       notify_parent(socket, :refresh_bot_statuses)
       {:noreply, socket}
@@ -414,10 +414,10 @@ defmodule McFunWeb.UnitsPanelLive do
       try do
         Process.sleep(500)
 
-        case McFun.BotSupervisor.spawn_bot(name) do
-          {:ok, _pid} ->
+        case BotFarmer.spawn_bot(name, model: model, personality: personality) do
+          {:ok, _pid, _} ->
             Process.sleep(2_000)
-            ensure_chatbot(name, model, personality)
+            BotFarmer.attach_chatbot(name, model: model, personality: personality)
             send(parent, {:flash, :info, "#{name} deployed after whitelist"})
             send(parent, :refresh_bots)
 
@@ -447,61 +447,61 @@ defmodule McFunWeb.UnitsPanelLive do
 
   def handle_event("toggle_bot_chat", _params, socket) do
     if socket.assigns.bot_chat_status[:enabled] do
-      McFun.BotChat.disable()
+      BotFarmer.bot_chat_disable()
     else
-      McFun.BotChat.enable()
+      BotFarmer.bot_chat_enable()
     end
 
-    {:noreply, assign(socket, bot_chat_status: McFun.BotChat.status())}
+    {:noreply, assign(socket, bot_chat_status: BotFarmer.bot_chat_status())}
   end
 
   def handle_event("update_bot_chat_config", params, socket) do
     if val = params["proximity"] do
-      McFun.BotChat.update_config(:proximity, parse_int(val))
+      BotFarmer.bot_chat_config(:proximity, parse_int(val))
     end
 
     if val = params["max_exchanges"] do
-      McFun.BotChat.update_config(:max_exchanges, parse_int(val))
+      BotFarmer.bot_chat_config(:max_exchanges, parse_int(val))
     end
 
     if val = params["cooldown_s"] do
-      McFun.BotChat.update_config(:cooldown_ms, parse_int(val) * 1000)
+      BotFarmer.bot_chat_config(:cooldown_ms, parse_int(val) * 1000)
     end
 
     if val = params["chance_pct"] do
-      McFun.BotChat.update_config(:response_chance, parse_int(val) / 100)
+      BotFarmer.bot_chat_config(:response_chance, parse_int(val) / 100)
     end
 
-    {:noreply, assign(socket, bot_chat_status: McFun.BotChat.status())}
+    {:noreply, assign(socket, bot_chat_status: BotFarmer.bot_chat_status())}
   end
 
   def handle_event("toggle_topic_injection", _params, socket) do
     enabled = socket.assigns.bot_chat_status[:topic_injection_enabled]
-    McFun.BotChat.toggle_topic_injection(!enabled)
-    {:noreply, assign(socket, bot_chat_status: McFun.BotChat.status())}
+    BotFarmer.toggle_topic_injection(!enabled)
+    {:noreply, assign(socket, bot_chat_status: BotFarmer.bot_chat_status())}
   end
 
   def handle_event("inject_topic_now", _params, socket) do
-    McFun.BotChat.inject_topic()
+    BotFarmer.inject_topic()
     notify_parent(socket, {:flash, :info, "Topic injected"})
     {:noreply, socket}
   end
 
   def handle_event("add_custom_topic", %{"topic" => topic}, socket) when topic != "" do
-    McFun.BotChat.add_topic(topic)
-    {:noreply, assign(socket, bot_chat_status: McFun.BotChat.status(), new_topic: "")}
+    BotFarmer.add_topic(topic)
+    {:noreply, assign(socket, bot_chat_status: BotFarmer.bot_chat_status(), new_topic: "")}
   end
 
   def handle_event("add_custom_topic", _, socket), do: {:noreply, socket}
 
   def handle_event("remove_custom_topic", %{"topic" => topic}, socket) do
-    McFun.BotChat.remove_topic(topic)
-    {:noreply, assign(socket, bot_chat_status: McFun.BotChat.status())}
+    BotFarmer.remove_topic(topic)
+    {:noreply, assign(socket, bot_chat_status: BotFarmer.bot_chat_status())}
   end
 
   def handle_event("toggle_topic", %{"topic" => topic, "enabled" => enabled}, socket) do
-    McFun.BotChat.toggle_topic(topic, enabled == "true")
-    {:noreply, assign(socket, bot_chat_status: McFun.BotChat.status())}
+    BotFarmer.toggle_topic(topic, enabled == "true")
+    {:noreply, assign(socket, bot_chat_status: BotFarmer.bot_chat_status())}
   end
 
   # --- Bot Card Actions ---
@@ -517,7 +517,7 @@ defmodule McFunWeb.UnitsPanelLive do
     model = socket.assigns.pending_card_models[bot_name]
 
     if model do
-      McFun.ChatBot.set_model(bot_name, model)
+      BotFarmer.set_model(bot_name, model)
       pending_models = Map.delete(socket.assigns.pending_card_models, bot_name)
       notify_parent(socket, {:flash, :info, "#{bot_name} >> #{model}"})
       notify_parent(socket, :refresh_bot_statuses)
@@ -533,7 +533,7 @@ defmodule McFunWeb.UnitsPanelLive do
 
   def handle_event("attach_chatbot", %{"bot" => name}, socket) do
     model = socket.assigns.selected_model
-    ensure_chatbot(name, model)
+    BotFarmer.attach_chatbot(name, model: model)
     notify_parent(socket, {:flash, :info, "ChatBot >> #{name} [#{model}]"})
     notify_parent(socket, :refresh_bot_statuses)
     {:noreply, socket}
@@ -541,7 +541,7 @@ defmodule McFunWeb.UnitsPanelLive do
 
   def handle_event("teleport_bot", %{"bot" => bot, "player" => player}, socket)
       when player != "" do
-    McFun.Bot.teleport_to(bot, player)
+    BotFarmer.teleport_to(bot, player)
     notify_parent(socket, {:flash, :info, "#{bot} >> tp to #{player}"})
     {:noreply, socket}
   end
@@ -552,7 +552,7 @@ defmodule McFunWeb.UnitsPanelLive do
     enabled? = enabled == "true"
 
     try do
-      McFun.ChatBot.toggle_heartbeat(bot, enabled?)
+      BotFarmer.toggle_heartbeat(bot, enabled?)
       notify_parent(socket, :refresh_bot_statuses)
     catch
       _, _ ->
@@ -566,7 +566,7 @@ defmodule McFunWeb.UnitsPanelLive do
     enabled? = enabled == "true"
 
     try do
-      McFun.ChatBot.toggle_group_chat(bot, enabled?)
+      BotFarmer.toggle_group_chat(bot, enabled?)
       notify_parent(socket, :refresh_bot_statuses)
     catch
       _, _ ->
@@ -577,8 +577,7 @@ defmodule McFunWeb.UnitsPanelLive do
   end
 
   def handle_event("stop_bot", %{"name" => name}, socket) do
-    stop_chatbot(name)
-    McFun.BotSupervisor.stop_bot(name)
+    BotFarmer.stop_bot(name)
     notify_parent(socket, :refresh_bots)
     {:noreply, socket}
   end
@@ -602,8 +601,8 @@ defmodule McFunWeb.UnitsPanelLive do
   end
 
   defp spawn_new_bot(socket, name, model, personality) do
-    case McFun.BotSupervisor.spawn_bot(name) do
-      {:ok, pid} ->
+    case BotFarmer.spawn_bot(name, model: model, personality: personality) do
+      {:ok, pid, _} ->
         Process.monitor(pid)
         Phoenix.PubSub.subscribe(McFun.PubSub, "bot:#{name}")
         schedule_chatbot_attach(socket, name, model, personality)
@@ -623,7 +622,7 @@ defmodule McFunWeb.UnitsPanelLive do
     Task.start(fn ->
       try do
         Process.sleep(2_000)
-        ensure_chatbot(name, model, personality)
+        BotFarmer.attach_chatbot(name, model: model, personality: personality)
         send(parent, :refresh_bots)
       rescue
         e -> send(parent, {:flash, :error, "ChatBot attach failed: #{Exception.message(e)}"})
@@ -631,43 +630,12 @@ defmodule McFunWeb.UnitsPanelLive do
     end)
   end
 
-  defp ensure_chatbot(name, model, personality \\ nil) do
-    opts = [bot_name: name, model: model]
-    opts = if personality, do: Keyword.put(opts, :personality, personality), else: opts
-    spec = {McFun.ChatBot, opts}
-
-    case DynamicSupervisor.start_child(McFun.BotSupervisor, spec) do
-      {:ok, _} ->
-        :ok
-
-      {:error, {:already_started, _}} ->
-        try do
-          McFun.ChatBot.set_model(name, model)
-          if personality, do: McFun.ChatBot.set_personality(name, personality)
-        catch
-          _, _ -> :ok
-        end
-
-        :ok
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp stop_chatbot(name) do
-    case Registry.lookup(McFun.BotRegistry, {:chat_bot, name}) do
-      [{pid, _}] -> DynamicSupervisor.terminate_child(McFun.BotSupervisor, pid)
-      [] -> :ok
-    end
-  end
-
   defp default_personality do
     Application.get_env(:mc_fun, :chat_bot)[:default_personality]
   end
 
   defp default_topics do
-    McFun.BotChat.default_topics()
+    BotFarmer.default_topics()
   end
 
   defp parse_int(val) when is_integer(val), do: val

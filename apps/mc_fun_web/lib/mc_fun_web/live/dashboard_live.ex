@@ -15,7 +15,7 @@ defmodule McFunWeb.DashboardLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    initial_bots = list_bots()
+    initial_bots = BotFarmer.list_bots()
 
     if connected?(socket) do
       McFun.Events.subscribe(:all)
@@ -38,7 +38,7 @@ defmodule McFunWeb.DashboardLive do
       |> assign(
         page_title: "MC Fun",
         rcon_history: [],
-        bots: list_bots(),
+        bots: BotFarmer.list_bots(),
         bot_statuses: build_bot_statuses(),
         available_models: models,
         events: McFun.EventStore.list(),
@@ -53,7 +53,7 @@ defmodule McFunWeb.DashboardLive do
         sidebar_open: true,
         subscribed_bots: MapSet.new(initial_bots),
         cost_summary: McFun.CostTracker.get_global_cost(),
-        bot_chat_status: safe_bot_chat_status(),
+        bot_chat_status: safe_bot_chat_status(BotFarmer.bot_chat_status()),
         server_health: server_health(),
         chat_entries: safe_chat_entries(),
         failed_bots: %{},
@@ -94,11 +94,7 @@ defmodule McFunWeb.DashboardLive do
   # --- Nav Bar Actions ---
 
   def handle_event("stop_all_bots", _params, socket) do
-    for bot <- socket.assigns.bots do
-      stop_chatbot(bot)
-      McFun.BotSupervisor.stop_bot(bot)
-    end
-
+    BotFarmer.stop_all()
     Process.send_after(self(), :refresh_bots, 200)
     {:noreply, assign(socket, bots: [], bot_statuses: %{})}
   end
@@ -121,7 +117,7 @@ defmodule McFunWeb.DashboardLive do
 
   @impl true
   def handle_info(:refresh_bots, socket) do
-    {:noreply, assign(socket, bots: list_bots(), bot_statuses: build_bot_statuses())}
+    {:noreply, assign(socket, bots: BotFarmer.list_bots(), bot_statuses: build_bot_statuses())}
   end
 
   @impl true
@@ -185,7 +181,7 @@ defmodule McFunWeb.DashboardLive do
     end)
 
     models = safe_model_ids()
-    current_bots = list_bots()
+    current_bots = BotFarmer.list_bots()
     current_set = MapSet.new(current_bots)
     subscribed = socket.assigns.subscribed_bots
 
@@ -286,7 +282,7 @@ defmodule McFunWeb.DashboardLive do
     {:noreply,
      socket
      |> put_flash(:error, "Unit crashed: #{inspect(reason)}")
-     |> assign(bots: list_bots(), bot_statuses: build_bot_statuses())}
+     |> assign(bots: BotFarmer.list_bots(), bot_statuses: build_bot_statuses())}
   end
 
   @impl true
@@ -315,12 +311,6 @@ defmodule McFunWeb.DashboardLive do
   def handle_info(_, socket), do: {:noreply, socket}
 
   # --- Helpers ---
-
-  defp list_bots do
-    McFun.BotSupervisor.list_bots()
-  rescue
-    _ -> []
-  end
 
   defp check_rcon do
     if Process.whereis(McFun.Rcon.Supervisor), do: :connected, else: :disconnected
@@ -392,77 +382,9 @@ defmodule McFunWeb.DashboardLive do
   defp apply_bot_event(statuses, _bot_name, _event_type, _event_data), do: statuses
 
   defp build_bot_statuses do
-    for bot <- list_bots(), into: %{} do
-      {bot, build_single_bot_status(bot)}
+    for bot <- BotFarmer.list_bots(), into: %{} do
+      {bot, BotFarmer.bot_status(bot)}
     end
-  end
-
-  defp build_single_bot_status(bot) do
-    chatbot_running? = Registry.lookup(McFun.BotRegistry, {:chat_bot, bot}) != []
-    chatbot_info = if chatbot_running?, do: try_chatbot_info(bot), else: nil
-    bot_status = try_bot_status(bot)
-
-    chatbot_fields(chatbot_info)
-    |> Map.merge(%{
-      chatbot: chatbot_running?,
-      behavior: try_behavior_info(bot),
-      position: bot_status[:position],
-      health: bot_status[:health],
-      food: bot_status[:food],
-      dimension: bot_status[:dimension],
-      inventory: bot_status[:inventory] || [],
-      cost: McFun.CostTracker.get_bot_cost(bot)
-    })
-  end
-
-  defp chatbot_fields(nil) do
-    %{
-      model: nil,
-      personality: nil,
-      conversations: nil,
-      conversation_players: nil,
-      heartbeat_enabled: nil,
-      group_chat_enabled: nil,
-      last_message: nil
-    }
-  end
-
-  defp chatbot_fields(info) do
-    %{
-      model: info[:model],
-      personality: info[:personality],
-      conversations: info[:conversations],
-      conversation_players: info[:conversation_players],
-      heartbeat_enabled: info[:heartbeat_enabled],
-      group_chat_enabled: info[:group_chat_enabled],
-      last_message: info[:last_message]
-    }
-  end
-
-  defp try_bot_status(bot_name) do
-    case McFun.Bot.status(bot_name) do
-      {:error, :not_found} -> %{position: nil, health: nil, food: nil, dimension: nil}
-      status when is_map(status) -> status
-    end
-  catch
-    _, _ -> %{position: nil, health: nil, food: nil, dimension: nil}
-  end
-
-  defp try_chatbot_info(bot_name) do
-    McFun.ChatBot.info(bot_name)
-  catch
-    _, _ -> nil
-  end
-
-  defp try_behavior_info(bot_name) do
-    case McFun.BotBehaviors.info(bot_name) do
-      {:error, :no_behavior} -> nil
-      info when is_map(info) -> info
-    end
-  rescue
-    _ -> nil
-  catch
-    _, _ -> nil
   end
 
   defp server_health do
@@ -475,13 +397,6 @@ defmodule McFunWeb.DashboardLive do
     end
   end
 
-  defp stop_chatbot(name) do
-    case Registry.lookup(McFun.BotRegistry, {:chat_bot, name}) do
-      [{pid, _}] -> DynamicSupervisor.terminate_child(McFun.BotSupervisor, pid)
-      [] -> :ok
-    end
-  end
-
   defp safe_chat_entries do
     McFun.ChatLog.list()
   rescue
@@ -490,11 +405,6 @@ defmodule McFunWeb.DashboardLive do
     _, _ -> []
   end
 
-  defp safe_bot_chat_status do
-    McFun.BotChat.status()
-  rescue
-    _ -> %{enabled: false, pairs: %{}, config: %{}}
-  catch
-    _, _ -> %{enabled: false, pairs: %{}, config: %{}}
-  end
+  defp safe_bot_chat_status(status) when is_map(status), do: status
+  defp safe_bot_chat_status(_), do: %{enabled: false, pairs: %{}, config: %{}}
 end

@@ -123,7 +123,7 @@ defmodule McFunWeb.BotConfigModalLive do
             <div>
               <label class="text-[10px] tracking-wider text-[#888] block mb-1">APPLY PRESET</label>
               <div class="flex flex-wrap gap-1">
-                <%= for {category, presets} <- McFun.Presets.by_category() do %>
+                <%= for {category, presets} <- BotFarmer.presets_by_category() do %>
                   <div class="w-full mt-2 first:mt-0">
                     <div class="text-[9px] tracking-widest text-[#555] mb-1">
                       {category |> to_string() |> String.upcase()}
@@ -549,7 +549,7 @@ defmodule McFunWeb.BotConfigModalLive do
     model = socket.assigns.pending_model
 
     if model do
-      McFun.ChatBot.set_model(bot_name, model)
+      BotFarmer.set_model(bot_name, model)
       notify_parent(socket, {:flash, :info, "#{bot_name} >> #{model}"})
       notify_parent(socket, :refresh_bot_statuses)
       {:noreply, assign(socket, pending_model: nil)}
@@ -563,7 +563,7 @@ defmodule McFunWeb.BotConfigModalLive do
   end
 
   def handle_event("save_personality", %{"bot" => bot, "personality" => personality}, socket) do
-    McFun.ChatBot.set_personality(bot, personality)
+    BotFarmer.set_personality(bot, personality)
     notify_parent(socket, {:flash, :info, "#{bot} personality updated"})
     notify_parent(socket, :refresh_bot_statuses)
     {:noreply, socket}
@@ -577,7 +577,7 @@ defmodule McFunWeb.BotConfigModalLive do
     enabled? = enabled == "true"
 
     try do
-      McFun.ChatBot.toggle_group_chat(bot, enabled?)
+      BotFarmer.toggle_group_chat(bot, enabled?)
       notify_parent(socket, :refresh_bot_statuses)
     catch
       _, _ ->
@@ -588,8 +588,8 @@ defmodule McFunWeb.BotConfigModalLive do
   end
 
   def handle_event("clear_conversation", %{"bot" => bot}, socket) do
-    McFun.ChatBot.wipe_memory(bot)
-    McFun.Bot.chat(bot, "Memory wiped!")
+    BotFarmer.wipe_memory(bot)
+    BotFarmer.chat(bot, "Memory wiped!")
     notify_parent(socket, {:flash, :info, "#{bot} memory wiped"})
     notify_parent(socket, :refresh_bot_statuses)
     {:noreply, socket}
@@ -607,13 +607,13 @@ defmodule McFunWeb.BotConfigModalLive do
         ArgumentError -> nil
       end
 
-    case preset_atom && McFun.Presets.get(preset_atom) do
+    case preset_atom && BotFarmer.get_preset(preset_atom) do
       {:ok, preset} ->
         combined =
           String.trim(default_personality()) <> "\n\n" <> String.trim(preset.system_prompt)
 
         try do
-          McFun.ChatBot.set_personality(bot, combined)
+          BotFarmer.set_personality(bot, combined)
           notify_parent(socket, {:flash, :info, "#{bot} >> #{preset.name}"})
           notify_parent(socket, :refresh_bot_statuses)
           {:noreply, socket}
@@ -632,7 +632,7 @@ defmodule McFunWeb.BotConfigModalLive do
   # --- Bot Actions ---
 
   def handle_event("bot_action_chat", %{"bot" => bot, "message" => msg}, socket) when msg != "" do
-    McFun.Bot.chat(bot, msg)
+    BotFarmer.chat(bot, msg)
     notify_parent(socket, {:flash, :info, "#{bot}: #{msg}"})
     {:noreply, socket}
   end
@@ -644,23 +644,23 @@ defmodule McFunWeb.BotConfigModalLive do
     x = safe_int(params["x"])
     y = safe_int(params["y"])
     z = safe_int(params["z"])
-    McFun.Bot.send_command(bot, %{action: "goto", x: x, y: y, z: z})
+    BotFarmer.send_command(bot, %{action: "goto", x: x, y: y, z: z})
     notify_parent(socket, {:flash, :info, "#{bot} >> goto #{x},#{y},#{z}"})
     {:noreply, socket}
   end
 
   def handle_event("bot_action_jump", %{"bot" => bot}, socket) do
-    McFun.Bot.send_command(bot, %{action: "jump"})
+    BotFarmer.send_command(bot, %{action: "jump"})
     {:noreply, socket}
   end
 
   def handle_event("bot_action_sneak", %{"bot" => bot}, socket) do
-    McFun.Bot.send_command(bot, %{action: "sneak"})
+    BotFarmer.send_command(bot, %{action: "sneak"})
     {:noreply, socket}
   end
 
   def handle_event("bot_action_attack", %{"bot" => bot}, socket) do
-    McFun.Bot.send_command(bot, %{action: "attack"})
+    BotFarmer.send_command(bot, %{action: "attack"})
     {:noreply, socket}
   end
 
@@ -673,7 +673,7 @@ defmodule McFunWeb.BotConfigModalLive do
         val -> safe_int(val)
       end
 
-    McFun.Bot.drop_item(bot, name, count)
+    BotFarmer.drop_item(bot, name, count)
     label = if count, do: "#{count}x #{name}", else: name
     notify_parent(socket, {:flash, :info, "#{bot} dropping #{label}"})
     {:noreply, socket}
@@ -682,14 +682,14 @@ defmodule McFunWeb.BotConfigModalLive do
   def handle_event("bot_action_drop_item", _, socket), do: {:noreply, socket}
 
   def handle_event("bot_action_drop_all", %{"bot" => bot}, socket) do
-    McFun.Bot.drop_all(bot)
+    BotFarmer.drop_all(bot)
     notify_parent(socket, {:flash, :info, "#{bot} dropping all items"})
     {:noreply, socket}
   end
 
   def handle_event("teleport_bot", %{"bot" => bot, "player" => player}, socket)
       when player != "" do
-    McFun.Bot.teleport_to(bot, player)
+    BotFarmer.teleport_to(bot, player)
     notify_parent(socket, {:flash, :info, "#{bot} >> tp to #{player}"})
     {:noreply, socket}
   end
@@ -706,7 +706,7 @@ defmodule McFunWeb.BotConfigModalLive do
   def handle_event("start_behavior_patrol", %{"bot" => bot, "waypoints" => wp_json}, socket) do
     with {:ok, waypoints} when is_list(waypoints) <- Jason.decode(wp_json),
          tuples when length(tuples) >= 2 <- parse_waypoints(waypoints) do
-      McFun.BotBehaviors.start_patrol(bot, tuples)
+      BotFarmer.start_patrol(bot, tuples)
 
       notify_parent(
         socket,
@@ -731,7 +731,7 @@ defmodule McFunWeb.BotConfigModalLive do
     target = params["target"]
 
     if target && target != "" do
-      McFun.BotBehaviors.start_follow(bot, target)
+      BotFarmer.start_follow(bot, target)
       notify_parent(socket, {:flash, :info, "#{bot} following #{target}"})
       notify_parent(socket, :refresh_bot_statuses)
       {:noreply, socket}
@@ -747,7 +747,7 @@ defmodule McFunWeb.BotConfigModalLive do
     y = safe_int(params["y"])
     z = safe_int(params["z"])
     radius = safe_int(params["radius"] || "8")
-    McFun.BotBehaviors.start_guard(bot, {x, y, z}, radius: radius)
+    BotFarmer.start_guard(bot, {x, y, z}, radius: radius)
     notify_parent(socket, {:flash, :info, "#{bot} guarding #{x},#{y},#{z} (r=#{radius})"})
     notify_parent(socket, :refresh_bot_statuses)
     {:noreply, socket}
@@ -772,7 +772,7 @@ defmodule McFunWeb.BotConfigModalLive do
           val -> Keyword.put(opts, :max_count, safe_int(val))
         end
 
-      McFun.BotBehaviors.start_mine(bot, block_type, opts)
+      BotFarmer.start_mine(bot, block_type, opts)
       notify_parent(socket, {:flash, :info, "#{bot} mining #{block_type}"})
       notify_parent(socket, :refresh_bot_statuses)
       {:noreply, socket}
@@ -783,7 +783,7 @@ defmodule McFunWeb.BotConfigModalLive do
     enabled? = enabled == "true"
 
     try do
-      McFun.ChatBot.toggle_heartbeat(bot, enabled?)
+      BotFarmer.toggle_heartbeat(bot, enabled?)
       notify_parent(socket, :refresh_bot_statuses)
     catch
       _, _ ->
@@ -794,7 +794,7 @@ defmodule McFunWeb.BotConfigModalLive do
   end
 
   def handle_event("stop_behavior", %{"bot" => bot}, socket) do
-    McFun.BotBehaviors.stop(bot)
+    BotFarmer.stop_behavior(bot)
     notify_parent(socket, {:flash, :info, "#{bot} behavior stopped"})
     notify_parent(socket, :refresh_bot_statuses)
     {:noreply, socket}

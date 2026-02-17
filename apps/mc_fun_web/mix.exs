@@ -32,6 +32,7 @@ defmodule McFunWeb.MixProject do
   defp deps do
     [
       {:mc_fun, in_umbrella: true},
+      {:bot_farmer, in_umbrella: true},
       {:phoenix, "~> 1.8.3"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},

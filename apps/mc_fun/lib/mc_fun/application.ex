@@ -17,12 +17,9 @@ defmodule McFun.Application do
       McFun.World.Redstone.CircuitRegistry,
       McFun.LLM.ModelCache,
       McFun.CostTracker,
-      McFun.BotChat,
       McFun.ChatLog,
       McFun.EventStore,
-      McFun.LogWatcher,
-      {Registry, keys: :unique, name: McFun.BotRegistry},
-      {DynamicSupervisor, name: McFun.BotSupervisor, strategy: :one_for_one}
+      McFun.LogWatcher
     ]
 
     opts = [strategy: :one_for_one, name: McFun.Supervisor]

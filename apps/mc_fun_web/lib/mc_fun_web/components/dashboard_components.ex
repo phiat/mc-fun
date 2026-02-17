@@ -72,7 +72,7 @@ defmodule McFunWeb.DashboardComponents do
               value={@selected_preset || "custom"}
             >
               <option value="custom">Custom</option>
-              <%= for {category, presets} <- McFun.Presets.by_category() do %>
+              <%= for {category, presets} <- BotFarmer.presets_by_category() do %>
                 <optgroup label={category |> to_string() |> String.upcase()}>
                   <option :for={preset <- presets} value={preset.id}>
                     {preset.name}

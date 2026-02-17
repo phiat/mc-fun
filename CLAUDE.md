@@ -58,21 +58,16 @@ mc-fun/                              # repo root = umbrella root
 ├── mix.exs                          # umbrella mix.exs
 ├── config/                          # shared config
 ├── apps/
-│   ├── mc_fun/                      # engine app — bot runtime, RCON, LLM, events
+│   ├── mc_fun/                      # engine app — RCON, LLM, events, world, infra
 │   │   ├── lib/mc_fun/
-│   │   │   ├── application.ex       # engine supervisor (PubSub, Rcon, bots, etc.)
+│   │   │   ├── application.ex       # engine supervisor (PubSub, Rcon, LLM, events)
 │   │   │   ├── rcon.ex              # RCON GenServer (crashes on auth fail — intentional)
-│   │   │   ├── bot.ex               # Mineflayer bot via Erlang Port + bridge.js
-│   │   │   ├── chat_bot.ex          # LLM chat — !ask/!model/!models/!personality/!reset/!tp
-│   │   │   ├── action_parser.ex     # Regex-based LLM response → bot action translator
-│   │   │   ├── bot_behaviors.ex     # Patrol/follow/guard behaviors (1s tick GenServers)
-│   │   │   ├── bot_supervisor.ex    # DynamicSupervisor wrapper for bots
 │   │   │   ├── chat_log.ex          # Persistent chat log (JSONL + ring buffer + PubSub)
-│   │   │   ├── presets.ex           # 22 bot personality presets across 6 categories
 │   │   │   ├── log_watcher.ex       # RCON-polling log watcher (no local log file)
 │   │   │   ├── events.ex            # PubSub event system
 │   │   │   ├── events/handlers.ex   # Default event handler registration
 │   │   │   ├── event_store.ex       # In-memory event store
+│   │   │   ├── cost_tracker.ex      # LLM cost tracking
 │   │   │   ├── snbt.ex             # SNBT parser public API
 │   │   │   ├── snbt/parser.ex      # Recursive descent SNBT parser
 │   │   │   ├── llm/                 # Groq API client + model cache
@@ -83,6 +78,22 @@ mc-fun/                              # repo root = umbrella root
 │   │   │       ├── music.ex         # Music/sound via RCON
 │   │   │       ├── redstone.ex      # Redstone circuit helpers
 │   │   │       └── redstone/        # Circuit registry + executor
+│   │   └── priv/
+│   │
+│   ├── bot_farmer/                  # bot fleet manager — bots, chatbot, behaviors, persistence
+│   │   ├── lib/
+│   │   │   ├── bot_farmer.ex        # Public facade API (BotFarmer.spawn_bot, etc.)
+│   │   │   ├── bot_farmer/
+│   │   │   │   ├── application.ex   # Supervisor: BotChat, BotStore, Registry, DynamicSupervisor
+│   │   │   │   └── bot_store.ex     # Fleet persistence (bot_fleet.json) + auto-deploy
+│   │   │   └── mc_fun/              # Moved modules (keep McFun.* names)
+│   │   │       ├── bot.ex           # Mineflayer bot via Erlang Port + bridge.js
+│   │   │       ├── chat_bot.ex      # LLM chat — !ask/!model/!models/!personality/!reset/!tp
+│   │   │       ├── bot_chat.ex      # Bot-to-bot chat coordinator
+│   │   │       ├── action_parser.ex # Regex-based LLM response → bot action translator
+│   │   │       ├── bot_behaviors.ex # Patrol/follow/guard/mine behaviors
+│   │   │       ├── bot_supervisor.ex # DynamicSupervisor wrapper for bots
+│   │   │       └── presets.ex       # 22 bot personality presets across 6 categories
 │   │   └── priv/mineflayer/bridge.js # Node.js mineflayer bridge
 │   │
 │   └── mc_fun_web/                  # web app — Phoenix, LiveView, dashboard
@@ -112,17 +123,24 @@ mc-fun/                              # repo root = umbrella root
 **McFun.Supervisor** (engine — `apps/mc_fun`):
 ```
 ├── Phoenix.PubSub (name: McFun.PubSub)
-├── McFun.Rcon
+├── McFun.Rcon.Supervisor
 ├── McFun.World.Redstone.CircuitRegistry
 ├── McFun.LLM.ModelCache            # ETS + disk cache
+├── McFun.CostTracker
 ├── McFun.ChatLog                   # Persistent chat log (JSONL + ring buffer)
 ├── McFun.EventStore
-├── McFun.LogWatcher                # Polls RCON for player list
-├── Registry (McFun.BotRegistry)
-└── DynamicSupervisor (McFun.BotSupervisor)
+└── McFun.LogWatcher                # Polls RCON for player list
 ```
 
 After start: `McFun.Events.Handlers.register_all()` registers default event handlers.
+
+**BotFarmer.Supervisor** (bot fleet — `apps/bot_farmer`):
+```
+├── McFun.BotChat                   # Bot-to-bot chat coordinator
+├── BotFarmer.BotStore              # Fleet persistence + auto-deploy
+├── Registry (McFun.BotRegistry)
+└── DynamicSupervisor (McFun.BotSupervisor)
+```
 
 **McFunWeb.Supervisor** (web — `apps/mc_fun_web`):
 ```
@@ -133,6 +151,8 @@ After start: `McFun.Events.Handlers.register_all()` registers default event hand
 
 ## Key Patterns
 
+- **BotFarmer facade**: Dashboard code calls `BotFarmer.*` (spawn_bot, stop_bot, set_model, start_patrol, bot_chat_status, etc.) instead of reaching into McFun.Bot/ChatBot/BotBehaviors/BotChat/BotSupervisor directly. Infrastructure modules (Rcon, LLM, Events, World) are still called directly via `McFun.*`.
+- **BotStore persistence**: `BotFarmer.BotStore` persists fleet config to `apps/bot_farmer/priv/bot_fleet.json`. On startup, auto-deploys all saved bots (staggered 2s). Writes are debounced (3s). The facade automatically calls BotStore on spawn/stop/config changes.
 - **Dashboard LiveComponents**: Each tab is a LiveComponent (`UnitsPanelLive`, `RconConsoleLive`, `EventStreamLive`, `ChatPanelLive`, `EffectsPanelLive`, `DisplayPanelLive`) plus `BotConfigModalLive` for the config modal. Components receive `parent_pid` and communicate back via `send(parent_pid, msg)` for flash/refresh. Cross-tab coord sharing uses `send_update/2`. Function components (`deploy_panel`, `bot_card`) accept a `target` attr for `phx-target` routing.
 - **Bot registry keys**: `"BotName"` (Bot), `{:chat_bot, "BotName"}` (ChatBot), `{:behavior, "BotName"}` (BotBehaviors)
 - **PubSub topics**: `"bot:#{name}"` for bot events, `McFun.Events` for game events, `"chat_log"` for chat entries
