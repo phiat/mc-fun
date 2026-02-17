@@ -144,13 +144,11 @@ defmodule McFun.World.Effects do
     :ok
   end
 
-  @doc "Welcome: title + firework + harp sound."
+  @doc "Welcome: title + harp sound."
   @spec welcome(String.t()) :: :ok
   def welcome(target) do
     title(target, "Welcome!", subtitle: "Enjoy your stay")
     Process.sleep(100)
-    firework(target, colors: [65_535, 16_777_215], shape: "small_ball")
-    Process.sleep(50)
     sound("block.note_block.harp", target, pitch: 1.5)
     :ok
   end

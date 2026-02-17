@@ -294,7 +294,8 @@ defmodule McFun.Bot do
        health: state.health,
        food: state.food,
        dimension: state.dimension,
-       inventory: state.inventory
+       inventory: state.inventory,
+       current_action: state.current_action
      }, state}
   end
 
@@ -439,10 +440,23 @@ defmodule McFun.Bot do
     if state.port && Port.info(state.port) do
       json = Jason.encode!(command) <> "\n"
       Port.command(state.port, json)
-      if source == :tool, do: set_action(state, action_atom(command), source), else: state
+      maybe_track_action(state, command, source)
     else
       Logger.warning("Bot #{state.name}: port dead, can't send command")
       state
+    end
+  end
+
+  defp maybe_track_action(state, _command, source) when source not in [:tool, :behavior], do: state
+
+  defp maybe_track_action(state, command, source) do
+    action_name = action_atom(command)
+
+    # Don't reset started_at if same action still running (behavior ticks every 1s)
+    if state.current_action && state.current_action.action == action_name do
+      state
+    else
+      set_action(state, action_name, source)
     end
   end
 

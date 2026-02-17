@@ -29,6 +29,13 @@
           <span class="text-[#666]">
             ({McFun.CostTracker.format_tokens(@cost_summary.total_tokens)} tok)
           </span>
+          <button
+            phx-click="reset_costs"
+            class="text-[#ff4444] hover:text-[#ff6666] ml-1"
+            title="Reset cost counters"
+          >
+            [reset]
+          </button>
         </span>
         <span :if={@bot_chat_status[:enabled]}>
           CHAT:

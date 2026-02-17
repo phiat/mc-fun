@@ -57,6 +57,7 @@ defmodule BotFarmer do
     bot_status = try_bot_status(name)
     chatbot_info = try_chatbot_info(name)
     behavior_info = try_behavior_info(name)
+    current_action = bot_status[:current_action]
 
     %{
       position: bot_status[:position],
@@ -73,6 +74,9 @@ defmodule BotFarmer do
       group_chat_enabled: chatbot_info && chatbot_info[:group_chat_enabled],
       last_message: chatbot_info && chatbot_info[:last_message],
       behavior: behavior_info,
+      current_action: current_action,
+      activity: derive_activity(current_action, behavior_info),
+      job_queue: try_job_queue_status(name),
       cost: try_bot_cost(name)
     }
   end
@@ -225,6 +229,12 @@ defmodule BotFarmer do
   def presets_by_category, do: McFun.Presets.by_category()
   def get_preset(id), do: McFun.Presets.get(id)
 
+  # ── Job Queue ───────────────────────────────────────────────────────
+
+  def enqueue_jobs(name, jobs), do: McFun.BotJobQueue.enqueue(name, jobs)
+  def job_queue_status(name), do: McFun.BotJobQueue.status(name)
+  def clear_job_queue(name), do: McFun.BotJobQueue.clear(name)
+
   # ── Internal helpers ─────────────────────────────────────────────────
 
   defp try_bot_status(name) do
@@ -260,5 +270,20 @@ defmodule BotFarmer do
     McFun.CostTracker.get_bot_cost(name)
   rescue
     _ -> nil
+  end
+
+  defp try_job_queue_status(name) do
+    McFun.BotJobQueue.status(name)
+  catch
+    :exit, _ -> nil
+  end
+
+  defp derive_activity(action, behavior) do
+    cond do
+      action && action.source == :tool -> %{state: action.action, source: :tool}
+      action && action.source == :behavior -> %{state: action.action, source: :behavior}
+      behavior -> %{state: behavior.behavior, source: :behavior}
+      true -> %{state: :idle, source: nil}
+    end
   end
 end

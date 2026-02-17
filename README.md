@@ -9,11 +9,12 @@ Phoenix LiveView control panel for a Minecraft server. Manage bots, execute RCON
 - LLM chat via Groq — bots respond to players, perform actions based on LLM output
 - A* pathfinding (mineflayer-pathfinder) for goto, follow, patrol
 - 22 personality presets across 6 categories
-- Behaviors: patrol (waypoint loop), follow (player), guard (position + radius)
+- Behaviors: patrol (waypoint loop), follow (player), guard (position + radius), mine (block type)
+- Job queue for sequential actions (go to X → mine Y → return to Z)
 - Per-bot config modal: model, personality, behaviors, actions
 
 **Dashboard**
-- Live bot cards with HP/food bars, position, dimension
+- Live bot cards with HP/food bars, position, dimension, activity state, job queue
 - Player cards with stats and `[USE]` coord buttons
 - RCON terminal with command history, Tab-repeat, and quick command palette
 - Entity picker dropdowns in FX and Display panels
@@ -144,7 +145,7 @@ Phoenix LiveView Dashboard (/dashboard)
 
 | Tab | Description |
 |-----|-------------|
-| **UNITS** | Bot cards (HP, food, position, model, behavior), deploy panel, config modal |
+| **UNITS** | Bot cards (HP, food, position, model, activity, behavior, job queue), deploy panel, config modal |
 | **PLAYERS** | Online player cards with stats and `[USE]` coord button |
 | **RCON** | Command terminal, history (arrow keys), Tab-repeat, quick command palette |
 | **FX** | Entity picker, effect buttons, custom title/subtitle message form |
@@ -168,7 +169,7 @@ mix mc.heal @a                             # full heal + feed
 
 # Effects & titles
 mix mc.fx title @a "Hello" "subtitle"      # title screen message
-mix mc.fx welcome @a                       # welcome effect (title + firework)
+mix mc.fx welcome @a                       # welcome effect (title + sound)
 mix mc.fx celebration @a                   # celebration effect
 mix mc.fx firework @a                      # firework
 mix mc.fx sound @a block.note_block.harp   # play sound

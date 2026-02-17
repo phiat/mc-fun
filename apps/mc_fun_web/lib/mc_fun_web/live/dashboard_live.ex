@@ -93,6 +93,11 @@ defmodule McFunWeb.DashboardLive do
 
   # --- Nav Bar Actions ---
 
+  def handle_event("reset_costs", _params, socket) do
+    McFun.CostTracker.reset()
+    {:noreply, assign(socket, cost_summary: McFun.CostTracker.get_global_cost())}
+  end
+
   def handle_event("stop_all_bots", _params, socket) do
     BotFarmer.stop_all()
     Process.send_after(self(), :refresh_bots, 200)
@@ -382,6 +387,28 @@ defmodule McFunWeb.DashboardLive do
       end
 
     update_bot_status(statuses, bot_name, updates)
+  end
+
+  defp apply_bot_event(statuses, bot_name, "action_change", %{"action" => action}) do
+    activity =
+      case action do
+        nil ->
+          # Check if behavior is still running
+          existing = Map.get(statuses, bot_name, %{})
+          behavior = existing[:behavior]
+
+          if behavior,
+            do: %{state: behavior.behavior, source: :behavior},
+            else: %{state: :idle, source: nil}
+
+        %{action: act, source: src} ->
+          %{state: act, source: src}
+
+        _ ->
+          %{state: :idle, source: nil}
+      end
+
+    update_bot_status(statuses, bot_name, %{current_action: action, activity: activity})
   end
 
   defp apply_bot_event(statuses, _bot_name, _event_type, _event_data), do: statuses

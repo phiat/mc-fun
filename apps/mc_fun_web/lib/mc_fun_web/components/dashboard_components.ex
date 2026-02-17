@@ -171,8 +171,19 @@ defmodule McFunWeb.DashboardComponents do
               <span class="text-[#00ffff]">{@status.model || "default"}</span>
             </div>
             <div class="flex justify-between">
+              <span>ACTIVITY</span>
+              <span class="text-[#aa66ff]">{format_activity(@status)}</span>
+            </div>
+            <div :if={@status[:behavior]} class="flex justify-between">
               <span>BEHAVIOR</span>
-              <span class="text-[#aa66ff]">{format_behavior(@status.behavior)}</span>
+              <span class="text-[#aa66ff]/60">{format_behavior(@status.behavior)}</span>
+            </div>
+            <div
+              :if={@status[:job_queue] && @status.job_queue.queued > 0}
+              class="flex justify-between"
+            >
+              <span>QUEUE</span>
+              <span class="text-[#ffcc00]">{@status.job_queue.queued} pending</span>
             </div>
             <div class="flex justify-between items-center">
               <span>HEARTBEAT</span>
@@ -454,6 +465,26 @@ defmodule McFunWeb.DashboardComponents do
   end
 
   # --- Shared Helpers ---
+
+  defp format_activity(%{activity: %{state: :idle}}), do: "IDLE"
+
+  defp format_activity(%{activity: %{state: state, source: source}}) do
+    "#{format_action_name(state)}#{if source, do: " (#{source})", else: ""}"
+  end
+
+  defp format_activity(_), do: "IDLE"
+
+  defp format_action_name(:goto), do: "MOVING"
+  defp format_action_name(:follow), do: "FOLLOWING"
+  defp format_action_name(:dig), do: "DIGGING"
+  defp format_action_name(:dig_looking_at), do: "DIGGING"
+  defp format_action_name(:dig_area), do: "DIGGING AREA"
+  defp format_action_name(:find_and_dig), do: "MINING"
+  defp format_action_name(:attack), do: "ATTACKING"
+  defp format_action_name(:place), do: "PLACING"
+  defp format_action_name(:craft), do: "CRAFTING"
+  defp format_action_name(:equip), do: "EQUIPPING"
+  defp format_action_name(action), do: action |> to_string() |> String.upcase()
 
   defp format_behavior(nil), do: "NONE"
   defp format_behavior(%{behavior: :patrol}), do: "PATROL"
