@@ -209,6 +209,8 @@ defmodule McFunWeb.UnitsPanelLive do
                   </button>
                 </div>
               </div>
+
+              <%!-- Custom topics --%>
               <form phx-submit="add_custom_topic" phx-target={@myself} class="flex gap-2">
                 <input
                   type="text"
@@ -224,25 +226,42 @@ defmodule McFunWeb.UnitsPanelLive do
                   ADD
                 </button>
               </form>
+
               <div
                 :if={(@bot_chat_status[:custom_topics] || []) != []}
-                class="mt-2 flex flex-wrap gap-1"
+                class="mt-2 space-y-1"
               >
-                <span
+                <div class="text-[9px] tracking-wider text-[#666]">CUSTOM TOPICS</div>
+                <div
                   :for={topic <- @bot_chat_status[:custom_topics] || []}
-                  class="inline-flex items-center gap-1 px-2 py-0.5 bg-[#111] border border-[#333] text-[10px] text-[#aaa]"
+                  class="flex items-center justify-between bg-[#080810] border border-[#222] px-2 py-1"
                 >
-                  {String.slice(topic, 0, 40)}{if String.length(topic) > 40, do: "..."}
+                  <span class="text-[10px] text-[#aaa] truncate mr-2">{topic}</span>
                   <button
                     phx-click="remove_custom_topic"
                     phx-target={@myself}
                     phx-value-topic={topic}
-                    class="text-[#ff4444]/50 hover:text-[#ff4444] text-[8px]"
+                    class="text-[#ff4444]/50 hover:text-[#ff4444] text-[9px] shrink-0"
                   >
-                    x
+                    [X]
                   </button>
-                </span>
+                </div>
               </div>
+
+              <%!-- Default topics (read-only) --%>
+              <details class="mt-2">
+                <summary class="text-[9px] tracking-wider text-[#555] cursor-pointer hover:text-[#888] select-none">
+                  DEFAULT TOPICS [10]
+                </summary>
+                <div class="mt-1 space-y-0.5">
+                  <div
+                    :for={topic <- default_topics()}
+                    class="text-[10px] text-[#555] px-2 py-0.5"
+                  >
+                    {topic}
+                  </div>
+                </div>
+              </details>
             </div>
 
             <%!-- Active pairs --%>
@@ -635,6 +654,10 @@ defmodule McFunWeb.UnitsPanelLive do
 
   defp default_personality do
     Application.get_env(:mc_fun, :chat_bot)[:default_personality]
+  end
+
+  defp default_topics do
+    McFun.BotChat.default_topics()
   end
 
   defp parse_int(val) when is_integer(val), do: val

@@ -36,6 +36,9 @@ defmodule McFun.BotChat do
     "What should we do next?"
   ]
 
+  @doc "Return the list of built-in default topics."
+  def default_topics, do: @default_topics
+
   # Client API
 
   def start_link(opts \\ []) do
@@ -157,13 +160,17 @@ defmodule McFun.BotChat do
   @impl true
   def handle_call({:add_topic, topic}, _from, state) do
     topics = [topic | state.custom_topics] |> Enum.uniq()
-    {:reply, :ok, %{state | custom_topics: topics}}
+    new_state = %{state | custom_topics: topics}
+    broadcast_update(new_state)
+    {:reply, :ok, new_state}
   end
 
   @impl true
   def handle_call({:remove_topic, topic}, _from, state) do
     topics = List.delete(state.custom_topics, topic)
-    {:reply, :ok, %{state | custom_topics: topics}}
+    new_state = %{state | custom_topics: topics}
+    broadcast_update(new_state)
+    {:reply, :ok, new_state}
   end
 
   @impl true
@@ -389,6 +396,7 @@ defmodule McFun.BotChat do
          enabled: state.enabled,
          pairs: state.pairs,
          config: state.config,
+         custom_topics: state.custom_topics,
          topic_injection_enabled: state.topic_injection_enabled
        }}
     )
