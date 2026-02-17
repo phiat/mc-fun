@@ -622,6 +622,50 @@ function executeCommand(cmd) {
       break;
     }
 
+    case 'drop_item': {
+      const { item_name, count } = cmd;
+      const item = bot.inventory.items().find(i => i.name === item_name);
+      if (!item) {
+        send({ event: 'error', action: 'drop_item', message: `Item '${item_name}' not in inventory` });
+        actionDone();
+      } else {
+        const toDrop = count ? Math.min(count, item.count) : item.count;
+        withTimeout(bot.toss(item.type, null, toDrop), 10000, 'drop_item')
+          .then(() => {
+            send({ event: 'ack', action: 'drop_item', item_name, count: toDrop });
+          })
+          .catch((err) => {
+            send({ event: 'error', action: 'drop_item', message: err.message });
+          })
+          .finally(() => actionDone());
+      }
+      break;
+    }
+
+    case 'drop_all': {
+      const items = bot.inventory.items();
+      if (items.length === 0) {
+        send({ event: 'ack', action: 'drop_all', count: 0 });
+        actionDone();
+      } else {
+        let dropped = 0;
+        const dropNext = () => {
+          const remaining = bot.inventory.items();
+          if (remaining.length === 0) {
+            send({ event: 'ack', action: 'drop_all', count: dropped });
+            actionDone();
+            return;
+          }
+          const item = remaining[0];
+          bot.tossStack(item)
+            .then(() => { dropped++; dropNext(); })
+            .catch(() => { dropped++; dropNext(); });
+        };
+        dropNext();
+      }
+      break;
+    }
+
     case 'survey': {
       const range = cmd.range || 16;
       const mcData = require('minecraft-data')(bot.version);

@@ -105,6 +105,18 @@ defmodule McFun.Bot do
     send_command(bot_name, %{action: "drop"})
   end
 
+  @doc "Drop a specific item by name, optionally a specific count."
+  def drop_item(bot_name, item_name, count \\ nil) do
+    cmd = %{action: "drop_item", item_name: item_name}
+    cmd = if count, do: Map.put(cmd, :count, count), else: cmd
+    send_command(bot_name, cmd)
+  end
+
+  @doc "Drop all items in inventory."
+  def drop_all(bot_name) do
+    send_command(bot_name, %{action: "drop_all"})
+  end
+
   @doc "Activate a block (buttons, levers, chests, doors) at the given coordinates."
   def activate_block(bot_name, x, y, z) do
     send_command(bot_name, %{action: "activate_block", x: x, y: y, z: z})

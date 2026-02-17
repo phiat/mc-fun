@@ -264,22 +264,17 @@ defmodule McFunWeb.DashboardComponents do
             <% end %>
             <%!-- Inventory --%>
             <%= if @status.inventory != [] do %>
-              <div class="pt-1 border-t border-[#222]">
-                <div class="text-[9px] text-[#666] mb-0.5">INVENTORY</div>
-                <div class="flex flex-wrap gap-x-2 gap-y-0.5">
-                  <span
-                    :for={item <- Enum.take(format_inventory(@status.inventory), 6)}
-                    class="text-[#aaa]"
-                  >
+              <% formatted = format_inventory(@status.inventory) %>
+              <details class="pt-1 border-t border-[#222]">
+                <summary class="text-[9px] text-[#666] cursor-pointer hover:text-[#aaa] select-none">
+                  INVENTORY [{length(formatted)}]
+                </summary>
+                <div class="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5">
+                  <span :for={item <- formatted} class="text-[#aaa]">
                     {item}
                   </span>
                 </div>
-                <%= if length(@status.inventory) > 6 do %>
-                  <div class="text-[9px] text-[#555] mt-0.5">
-                    +{length(@status.inventory) - 6} more
-                  </div>
-                <% end %>
-              </div>
+              </details>
             <% end %>
             <%!-- Last message --%>
             <%= if @status[:last_message] do %>

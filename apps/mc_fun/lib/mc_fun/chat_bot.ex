@@ -895,6 +895,27 @@ defmodule McFun.ChatBot do
         %{},
         []
       ),
+      tool(
+        "drop_item",
+        "Drop a specific item from inventory by name. Optionally specify a count, otherwise drops the entire stack.",
+        %{
+          "item_name" => %{
+            "type" => "string",
+            "description" => "Item name (e.g. cobblestone, diamond)"
+          },
+          "count" => %{
+            "type" => "integer",
+            "description" => "Number to drop (omit for entire stack)"
+          }
+        },
+        ["item_name"]
+      ),
+      tool(
+        "drop_all",
+        "Drop ALL items from inventory onto the ground. Only use when explicitly asked to empty inventory.",
+        %{},
+        []
+      ),
       tool("sneak", "Toggle sneaking/crouching", %{}, []),
       tool(
         "craft",
@@ -1014,6 +1035,16 @@ defmodule McFun.ChatBot do
 
   defp execute_tool(bot, "drop", _args, _username) do
     McFun.Bot.drop(bot)
+  end
+
+  defp execute_tool(bot, "drop_item", args, _username) do
+    item_name = args["item_name"]
+    count = args["count"]
+    McFun.Bot.drop_item(bot, item_name, count)
+  end
+
+  defp execute_tool(bot, "drop_all", _args, _username) do
+    McFun.Bot.drop_all(bot)
   end
 
   defp execute_tool(bot, "sneak", _args, _username) do

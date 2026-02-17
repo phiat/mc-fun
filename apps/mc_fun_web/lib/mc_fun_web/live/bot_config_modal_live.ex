@@ -452,6 +452,48 @@ defmodule McFunWeb.BotConfigModalLive do
               </div>
             </div>
 
+            <%!-- Inventory --%>
+            <div class="border border-[#222] p-3">
+              <div class="text-[10px] tracking-widest text-[#00ffff] mb-2">INVENTORY</div>
+              <form
+                id={"drop-item-form-#{@bot}"}
+                phx-submit="bot_action_drop_item"
+                phx-target={@myself}
+                class="flex gap-2"
+              >
+                <input type="hidden" name="bot" value={@bot} />
+                <input
+                  type="text"
+                  name="item_name"
+                  placeholder="item name (e.g. cobblestone)"
+                  class="flex-1 bg-[#111] border border-[#333] text-[#e0e0e0] px-3 py-1.5 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
+                />
+                <input
+                  type="text"
+                  name="count"
+                  placeholder="all"
+                  class="w-16 bg-[#111] border border-[#333] text-[#e0e0e0] px-2 py-1.5 text-xs focus:border-[#00ffff] focus:outline-none placeholder:text-[#444]"
+                />
+                <button
+                  type="submit"
+                  class="px-4 py-1 border border-[#00ffff]/50 text-[#00ffff] text-[10px] tracking-widest hover:bg-[#00ffff]/10"
+                >
+                  DROP
+                </button>
+              </form>
+              <div class="flex gap-2 mt-2">
+                <button
+                  phx-click="bot_action_drop_all"
+                  phx-target={@myself}
+                  phx-value-bot={@bot}
+                  data-confirm="Drop all items?"
+                  class="px-3 py-1 border border-[#ff4444]/30 text-[#ff4444] text-[10px] hover:bg-[#ff4444]/10"
+                >
+                  DROP ALL
+                </button>
+              </div>
+            </div>
+
             <%!-- Quick actions --%>
             <div class="border border-[#222] p-3">
               <div class="text-[10px] tracking-widest text-[#00ffff] mb-2">QUICK ACTIONS</div>
@@ -623,6 +665,29 @@ defmodule McFunWeb.BotConfigModalLive do
 
   def handle_event("bot_action_attack", %{"bot" => bot}, socket) do
     McFun.Bot.send_command(bot, %{action: "attack"})
+    {:noreply, socket}
+  end
+
+  def handle_event("bot_action_drop_item", %{"bot" => bot, "item_name" => name} = params, socket)
+      when name != "" do
+    count =
+      case params["count"] do
+        nil -> nil
+        "" -> nil
+        val -> safe_int(val)
+      end
+
+    McFun.Bot.drop_item(bot, name, count)
+    label = if count, do: "#{count}x #{name}", else: name
+    notify_parent(socket, {:flash, :info, "#{bot} dropping #{label}"})
+    {:noreply, socket}
+  end
+
+  def handle_event("bot_action_drop_item", _, socket), do: {:noreply, socket}
+
+  def handle_event("bot_action_drop_all", %{"bot" => bot}, socket) do
+    McFun.Bot.drop_all(bot)
+    notify_parent(socket, {:flash, :info, "#{bot} dropping all items"})
     {:noreply, socket}
   end
 
