@@ -80,6 +80,13 @@ defmodule McFun.BotChat do
     GenServer.call(__MODULE__, {:toggle_topic, topic, enabled?})
   end
 
+  @doc "Try to claim a whisper for a specific bot. Returns true if this bot should respond."
+  def claim_whisper(bot_name, username, message) do
+    GenServer.call(__MODULE__, {:claim_whisper, bot_name, username, message})
+  catch
+    :exit, _ -> true
+  end
+
   @doc "Enable or disable periodic topic injection."
   def toggle_topic_injection(enabled?) do
     GenServer.call(__MODULE__, {:toggle_topic_injection, enabled?})
@@ -108,7 +115,8 @@ defmodule McFun.BotChat do
       topic_injection_enabled: Keyword.get(config, :topic_injection_enabled, false),
       topic_timer_ref: nil,
       subscribed_bots: MapSet.new(),
-      pending_responses: MapSet.new()
+      pending_responses: MapSet.new(),
+      recent_whispers: %{}
     }
 
     Process.send_after(self(), :refresh_subscriptions, 1_000)
@@ -213,6 +221,29 @@ defmodule McFun.BotChat do
     state = %{state | topic_injection_enabled: enabled?}
     broadcast_update(state)
     {:reply, :ok, state}
+  end
+
+  @impl true
+  def handle_call({:claim_whisper, bot_name, username, message}, _from, state) do
+    key = {username, message}
+    now = System.monotonic_time(:millisecond)
+
+    # Clean old entries (>5s)
+    recent =
+      Map.reject(state.recent_whispers, fn {_k, {_bot, ts}} -> now - ts > 5_000 end)
+
+    case Map.get(recent, key) do
+      nil ->
+        recent = Map.put(recent, key, {bot_name, now})
+        {:reply, true, %{state | recent_whispers: recent}}
+
+      {^bot_name, _ts} ->
+        {:reply, true, %{state | recent_whispers: recent}}
+
+      {other_bot, _ts} ->
+        Logger.debug("BotChat: whisper from #{username} already claimed by #{other_bot}, skipping #{bot_name}")
+        {:reply, false, %{state | recent_whispers: recent}}
+    end
   end
 
   # Chat event from a bot

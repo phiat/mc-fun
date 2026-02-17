@@ -202,16 +202,21 @@ defmodule McFun.ChatBot do
     {:noreply, state}
   end
 
-  # Whispers always get a response
+  # Whispers — only respond if this bot claims the whisper (prevents all bots responding)
   @impl true
   def handle_info(
         {:bot_event, _bot_name,
          %{"event" => "whisper", "username" => username, "message" => message}},
         state
       ) do
-    Logger.info("ChatBot #{state.bot_name}: WHISPER from #{username}: #{inspect(message)}")
-    state = handle_message(state, username, message, :whisper)
-    {:noreply, state}
+    if McFun.BotChat.claim_whisper(state.bot_name, username, message) do
+      Logger.info("ChatBot #{state.bot_name}: WHISPER from #{username}: #{inspect(message)}")
+      state = handle_message(state, username, message, :whisper)
+      {:noreply, state}
+    else
+      Logger.debug("ChatBot #{state.bot_name}: skipping whisper (claimed by another bot)")
+      {:noreply, state}
+    end
   end
 
   @impl true

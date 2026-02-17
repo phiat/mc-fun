@@ -179,6 +179,7 @@ function createBot() {
   });
 
   bot.on('whisper', (uname, message) => {
+    if (uname === bot.username) return;
     send({ event: 'whisper', username: uname, message });
   });
 

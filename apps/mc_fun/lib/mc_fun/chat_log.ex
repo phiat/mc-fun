@@ -58,7 +58,8 @@ defmodule McFun.ChatLog do
        entries: entries,
        next_id: next_id,
        subscribed_bots: MapSet.new(bots),
-       log_file: file
+       log_file: file,
+       recent_whisper_ts: %{}
      }}
   end
 
@@ -103,12 +104,22 @@ defmodule McFun.ChatLog do
     username = Map.get(data, "username", "unknown")
     message = Map.get(data, "message", "")
 
-    entry =
-      build_entry(state.next_id, username, message, :whisper, bot_name, %{
-        "heard_by" => bot_name
-      })
+    # Deduplicate — multiple bots may receive the same whisper from the server
+    key = {:whisper, username, message}
+    now = System.monotonic_time(:millisecond)
+    last_ts = Map.get(state.recent_whisper_ts, key, 0)
 
-    {:noreply, push_entry(state, entry)}
+    if now - last_ts > 3_000 do
+      entry =
+        build_entry(state.next_id, username, message, :whisper, bot_name, %{
+          "heard_by" => bot_name
+        })
+
+      recent = Map.put(state.recent_whisper_ts, key, now)
+      {:noreply, push_entry(%{state | recent_whisper_ts: recent}, entry)}
+    else
+      {:noreply, state}
+    end
   end
 
   def handle_info(
