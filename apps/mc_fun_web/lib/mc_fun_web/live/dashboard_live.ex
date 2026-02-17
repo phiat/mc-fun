@@ -11,7 +11,7 @@ defmodule McFunWeb.DashboardLive do
 
   alias McFun.LLM.ModelCache
 
-  @valid_tabs ~w(bots players rcon effects display events chat)
+  @valid_tabs ~w(bots players rcon effects display events chat map)
 
   @impl true
   def mount(_params, _session, socket) do
@@ -315,6 +315,33 @@ defmodule McFunWeb.DashboardLive do
   @impl true
   def handle_info(:chat_log_cleared, socket) do
     {:noreply, assign(socket, chat_entries: [])}
+  end
+
+  @impl true
+  def handle_info({:terrain_scan_result, component_id, {:ok, data}}, socket) do
+    blocks = Map.get(data, "blocks", [])
+    center = Map.get(data, "center", %{})
+
+    send_update(McFunWeb.MapPanelLive,
+      id: component_id,
+      terrain_data: blocks,
+      scan_center: %{x: center["x"], z: center["z"]},
+      scanning: false
+    )
+
+    socket = push_event(socket, "terrain_data", %{blocks: blocks, center: center})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:terrain_scan_result, component_id, {:error, reason}}, socket) do
+    send_update(McFunWeb.MapPanelLive,
+      id: component_id,
+      scanning: false,
+      scan_error: "Scan failed: #{inspect(reason)}"
+    )
+
+    {:noreply, socket}
   end
 
   @impl true

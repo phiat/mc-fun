@@ -159,6 +159,13 @@ defmodule McFun.Bot do
     :exit, _ -> {:error, :not_found}
   end
 
+  @doc "Scan loaded terrain chunks for surface heightmap."
+  def terrain_scan(bot_name) do
+    GenServer.call(via(bot_name), {:terrain_scan}, 30_000)
+  catch
+    :exit, _ -> {:error, :not_found}
+  end
+
   @doc "Find and dig the nearest block of a given type."
   def find_and_dig(bot_name, block_type) do
     send_command(bot_name, %{action: "find_and_dig", block_type: block_type})
@@ -287,6 +294,17 @@ defmodule McFun.Bot do
   end
 
   @impl true
+  def handle_call({:terrain_scan}, from, state) do
+    if state.port && Port.info(state.port) do
+      json = Jason.encode!(%{action: "terrain_scan"}) <> "\n"
+      Port.command(state.port, json)
+      {:noreply, %{state | listeners: [{:terrain_scan, from} | state.listeners]}}
+    else
+      {:reply, {:error, :port_dead}, state}
+    end
+  end
+
+  @impl true
   def handle_call(:status, _from, state) do
     {:reply,
      %{
@@ -308,6 +326,16 @@ defmodule McFun.Bot do
           Enum.split_with(state.listeners, fn {type, _} -> type == :survey end)
 
         for {:survey, from} <- survey_listeners do
+          GenServer.reply(from, {:ok, event})
+        end
+
+        {:noreply, %{state | listeners: rest}}
+
+      {:ok, %{"event" => "terrain_scan"} = event} ->
+        {scan_listeners, rest} =
+          Enum.split_with(state.listeners, fn {type, _} -> type == :terrain_scan end)
+
+        for {:terrain_scan, from} <- scan_listeners do
           GenServer.reply(from, {:ok, event})
         end
 

@@ -72,6 +72,7 @@ function executeCommand(cmd) {
     case 'players':        infoCmds.players(bot); break;
     case 'status':         infoCmds.status(bot); break;
     case 'survey':         infoCmds.survey(bot, cmd); break;
+    case 'terrain_scan':   infoCmds.terrainScan(bot); break;
 
     // World interaction
     case 'dig':            worldCmds.dig(bot, cmd, done); break;

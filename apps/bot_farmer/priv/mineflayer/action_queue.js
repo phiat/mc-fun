@@ -9,7 +9,7 @@ const { send, log } = require('./utils');
 
 const SYNC_ACTIONS = new Set([
   'chat', 'whisper', 'position', 'inventory', 'players',
-  'look', 'jump', 'sneak', 'status', 'survey', 'stop', 'quit'
+  'look', 'jump', 'sneak', 'status', 'survey', 'terrain_scan', 'stop', 'quit'
 ]);
 
 let actionBusy = false;

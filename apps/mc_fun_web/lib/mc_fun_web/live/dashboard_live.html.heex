@@ -78,7 +78,8 @@
               {"effects", "FX"},
               {"display", "DISPLAY"},
               {"events", "EVENTS"},
-              {"chat", "CHAT"}
+              {"chat", "CHAT"},
+              {"map", "MAP"}
             ]
           }
           patch={~p"/dashboard?tab=#{id}"}
@@ -207,6 +208,17 @@
       module={McFunWeb.ChatPanelLive}
       id="chat-panel"
       chat_entries={@chat_entries}
+      parent_pid={self()}
+    />
+
+    <%!-- ==================== MAP TAB ==================== --%>
+    <.live_component
+      :if={@active_tab == "map"}
+      module={McFunWeb.MapPanelLive}
+      id="map-panel"
+      bots={@bots}
+      bot_statuses={@bot_statuses}
+      player_statuses={@player_statuses}
       parent_pid={self()}
     />
   </div>

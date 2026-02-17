@@ -111,4 +111,46 @@ function survey(bot, cmd) {
   });
 }
 
-module.exports = { inventory, position, players, status, survey };
+function terrainScan(bot) {
+  const mcData = require('minecraft-data')(bot.version)
+  const Vec3 = require('vec3')
+  const columns = bot.world.getColumns()
+  const airIds = new Set()
+
+  // Collect air-type state IDs for fast skip
+  for (const name of ['air', 'cave_air', 'void_air']) {
+    const b = mcData.blocksByName[name]
+    if (b) airIds.add(b.defaultState)
+  }
+
+  const blocks = []
+  const minY = -64  // 1.18+ world bottom
+
+  for (const { chunkX, chunkZ, column } of columns) {
+    const cx = parseInt(chunkX) * 16
+    const cz = parseInt(chunkZ) * 16
+    for (let bx = 0; bx < 16; bx++) {
+      for (let bz = 0; bz < 16; bz++) {
+        // Scan down from top to find surface block
+        for (let by = 319; by >= minY; by--) {
+          const stateId = column.getBlockStateId(new Vec3(bx, by, bz))
+          if (stateId && !airIds.has(stateId)) {
+            const blockInfo = mcData.blocksByStateId[stateId]
+            blocks.push([cx + bx, cz + bz, by, blockInfo ? blockInfo.name : 'unknown'])
+            break
+          }
+        }
+      }
+    }
+  }
+
+  const pos = bot.entity ? bot.entity.position : { x: 0, y: 0, z: 0 }
+  send({
+    event: 'terrain_scan',
+    center: { x: Math.round(pos.x), z: Math.round(pos.z) },
+    blocks: blocks,  // [[x, z, y, name], ...]
+    chunk_count: columns.length
+  })
+}
+
+module.exports = { inventory, position, players, status, survey, terrainScan };

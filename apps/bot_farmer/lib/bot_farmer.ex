@@ -156,6 +156,7 @@ defmodule BotFarmer do
   def teleport_to(name, target), do: McFun.Bot.teleport_to(name, target)
   def drop_item(name, item, count \\ nil), do: McFun.Bot.drop_item(name, item, count)
   def drop_all(name), do: McFun.Bot.drop_all(name)
+  def terrain_scan(name), do: McFun.Bot.terrain_scan(name)
 
   # ── Behaviors ────────────────────────────────────────────────────────
 
