@@ -67,6 +67,7 @@ mc-fun/                              # repo root = umbrella root
 │   │   │   ├── action_parser.ex     # Regex-based LLM response → bot action translator
 │   │   │   ├── bot_behaviors.ex     # Patrol/follow/guard behaviors (1s tick GenServers)
 │   │   │   ├── bot_supervisor.ex    # DynamicSupervisor wrapper for bots
+│   │   │   ├── chat_log.ex          # Persistent chat log (JSONL + ring buffer + PubSub)
 │   │   │   ├── presets.ex           # 22 bot personality presets across 6 categories
 │   │   │   ├── log_watcher.ex       # RCON-polling log watcher (no local log file)
 │   │   │   ├── events.ex            # PubSub event system
@@ -92,6 +93,7 @@ mc-fun/                              # repo root = umbrella root
 │       │   │   ├── units_panel_live.ex     # UNITS tab — deploy config, bot cards, spawn/stop
 │       │   │   ├── rcon_console_live.ex    # RCON tab — terminal, history, quick commands
 │       │   │   ├── event_stream_live.ex    # EVENTS tab — real-time event log
+│       │   │   ├── chat_panel_live.ex      # CHAT tab — color-coded chat viewer
 │       │   │   ├── effects_panel_live.ex   # FX tab — effects, titles, entity picker
 │       │   │   ├── display_panel_live.ex   # DISPLAY tab — block text, coord fill
 │       │   │   └── bot_config_modal_live.ex # Bot config modal — model, personality, behaviors
@@ -110,6 +112,7 @@ mc-fun/                              # repo root = umbrella root
 ├── McFun.Rcon
 ├── McFun.Redstone.CircuitRegistry
 ├── McFun.LLM.ModelCache            # ETS + disk cache
+├── McFun.ChatLog                   # Persistent chat log (JSONL + ring buffer)
 ├── McFun.EventStore
 ├── McFun.LogWatcher                # Polls RCON for player list
 ├── Registry (McFun.BotRegistry)
@@ -127,9 +130,10 @@ After start: `McFun.Events.Handlers.register_all()` registers default event hand
 
 ## Key Patterns
 
-- **Dashboard LiveComponents**: Each tab is a LiveComponent (`UnitsPanelLive`, `RconConsoleLive`, `EventStreamLive`, `EffectsPanelLive`, `DisplayPanelLive`) plus `BotConfigModalLive` for the config modal. Components receive `parent_pid` and communicate back via `send(parent_pid, msg)` for flash/refresh. Cross-tab coord sharing uses `send_update/2`. Function components (`deploy_panel`, `bot_card`) accept a `target` attr for `phx-target` routing.
+- **Dashboard LiveComponents**: Each tab is a LiveComponent (`UnitsPanelLive`, `RconConsoleLive`, `EventStreamLive`, `ChatPanelLive`, `EffectsPanelLive`, `DisplayPanelLive`) plus `BotConfigModalLive` for the config modal. Components receive `parent_pid` and communicate back via `send(parent_pid, msg)` for flash/refresh. Cross-tab coord sharing uses `send_update/2`. Function components (`deploy_panel`, `bot_card`) accept a `target` attr for `phx-target` routing.
 - **Bot registry keys**: `"BotName"` (Bot), `{:chat_bot, "BotName"}` (ChatBot), `{:behavior, "BotName"}` (BotBehaviors)
-- **PubSub topics**: `"bot:#{name}"` for bot events, `McFun.Events` for game events
+- **PubSub topics**: `"bot:#{name}"` for bot events, `McFun.Events` for game events, `"chat_log"` for chat entries
+- **ChatLog**: GenServer that subscribes to all bot PubSub + Events, classifies messages (player_chat, whisper, llm_response, heartbeat, bot_to_bot, system), persists to `priv/chat_log.jsonl`, maintains 500-entry ring buffer. Broadcasts `{:new_chat_entry, entry}` on `"chat_log"` topic.
 - **Async in LiveView**: RCON commands and LLM calls use `Task.start` to avoid blocking the LiveView process. Results sent back via `send(lv, {:rcon_result, ...})`.
 - **Bot ↔ bridge.js protocol**: Newline-delimited JSON over stdin/stdout. Bot sends commands as JSON, bridge.js sends events back.
 - **ChatBot commands**: `!ask` (LLM query, rate-limited 2s), `!model`/`!models`, `!personality`, `!reset`, `!tp`. Whispers always trigger LLM response.

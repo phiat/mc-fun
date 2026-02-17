@@ -87,6 +87,39 @@ const Hooks = {
         if (form) setTimeout(() => form.reset(), 50)
       })
     }
+  },
+  ChatScroll: {
+    mounted() {
+      this.isAtBottom = true
+      this.scrollToBottom()
+
+      this.el.addEventListener("scroll", () => {
+        const threshold = 50
+        const atBottom = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < threshold
+        if (atBottom !== this.isAtBottom) {
+          this.isAtBottom = atBottom
+          this.pushEvent("scroll_state_changed", { at_bottom: atBottom })
+        }
+      })
+
+      this.observer = new MutationObserver(() => {
+        if (this.isAtBottom) {
+          this.scrollToBottom()
+        }
+      })
+      this.observer.observe(this.el, { childList: true, subtree: true })
+    },
+    updated() {
+      if (this.isAtBottom) {
+        this.scrollToBottom()
+      }
+    },
+    destroyed() {
+      if (this.observer) this.observer.disconnect()
+    },
+    scrollToBottom() {
+      this.el.scrollTop = this.el.scrollHeight
+    }
   }
 }
 

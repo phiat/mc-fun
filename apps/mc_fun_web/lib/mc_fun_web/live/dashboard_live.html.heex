@@ -70,7 +70,8 @@
               {"rcon", "RCON"},
               {"effects", "FX"},
               {"display", "DISPLAY"},
-              {"events", "EVENTS"}
+              {"events", "EVENTS"},
+              {"chat", "CHAT"}
             ]
           }
           role="tab"
@@ -192,6 +193,15 @@
       module={McFunWeb.EventStreamLive}
       id="event-stream"
       events={@events}
+    />
+
+    <%!-- ==================== CHAT TAB ==================== --%>
+    <.live_component
+      :if={@active_tab == "chat"}
+      module={McFunWeb.ChatPanelLive}
+      id="chat-panel"
+      chat_entries={@chat_entries}
+      parent_pid={self()}
     />
   </div>
 </div>

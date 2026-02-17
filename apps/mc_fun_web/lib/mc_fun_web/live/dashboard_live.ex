@@ -25,6 +25,7 @@ defmodule McFunWeb.DashboardLive do
       Phoenix.PubSub.subscribe(McFun.PubSub, "player_statuses")
       Phoenix.PubSub.subscribe(McFun.PubSub, "costs")
       Phoenix.PubSub.subscribe(McFun.PubSub, "bot_chat")
+      Phoenix.PubSub.subscribe(McFun.PubSub, "chat_log")
       :timer.send_interval(3_000, self(), :refresh_status)
     end
 
@@ -52,6 +53,7 @@ defmodule McFunWeb.DashboardLive do
         cost_summary: McFun.CostTracker.get_global_cost(),
         bot_chat_status: safe_bot_chat_status(),
         server_health: server_health(),
+        chat_entries: safe_chat_entries(),
         failed_bots: %{},
         # Bot config modal
         selected_bot: nil,
@@ -295,6 +297,12 @@ defmodule McFunWeb.DashboardLive do
   end
 
   @impl true
+  def handle_info({:new_chat_entry, entry}, socket) do
+    entries = [entry | Enum.take(socket.assigns.chat_entries, 499)]
+    {:noreply, assign(socket, chat_entries: entries)}
+  end
+
+  @impl true
   def handle_info(_, socket), do: {:noreply, socket}
 
   # --- Helpers ---
@@ -463,6 +471,14 @@ defmodule McFunWeb.DashboardLive do
       [{pid, _}] -> DynamicSupervisor.terminate_child(McFun.BotSupervisor, pid)
       [] -> :ok
     end
+  end
+
+  defp safe_chat_entries do
+    McFun.ChatLog.list()
+  rescue
+    _ -> []
+  catch
+    _, _ -> []
   end
 
   defp safe_bot_chat_status do

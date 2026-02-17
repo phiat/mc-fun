@@ -18,6 +18,7 @@ defmodule McFun.Application do
       McFun.LLM.ModelCache,
       McFun.CostTracker,
       McFun.BotChat,
+      McFun.ChatLog,
       McFun.EventStore,
       McFun.LogWatcher,
       {Registry, keys: :unique, name: McFun.BotRegistry},
