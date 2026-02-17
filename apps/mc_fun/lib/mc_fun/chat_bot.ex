@@ -76,6 +76,11 @@ defmodule McFun.ChatBot do
     GenServer.call(via(bot_name), :info)
   end
 
+  @doc "Wipe all memory: conversations, last message, last active timestamps."
+  def wipe_memory(bot_name) do
+    GenServer.call(via(bot_name), :wipe_memory)
+  end
+
   @doc "Enable or disable heartbeat (ambient chat) for a bot."
   def toggle_heartbeat(bot_name, enabled?) do
     GenServer.call(via(bot_name), {:toggle_heartbeat, enabled?})
@@ -127,6 +132,14 @@ defmodule McFun.ChatBot do
   def handle_call({:set_personality, personality}, _from, state) do
     McFun.Bot.chat(state.bot_name, "Personality updated!")
     {:reply, :ok, %{state | personality: personality}}
+  end
+
+  @impl true
+  def handle_call(:wipe_memory, _from, state) do
+    Logger.info("ChatBot #{state.bot_name} memory wiped")
+
+    {:reply, :ok,
+     %{state | conversations: %{}, last_active: %{}, last_response: nil, last_message: nil}}
   end
 
   @impl true

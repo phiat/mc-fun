@@ -194,9 +194,10 @@ defmodule McFunWeb.BotConfigModalLive do
                   phx-click="clear_conversation"
                   phx-target={@myself}
                   phx-value-bot={@bot}
+                  data-confirm="Wipe all memory for this bot?"
                   class="text-[10px] text-[#ff4444]/50 hover:text-[#ff4444]"
                 >
-                  CLEAR ALL
+                  WIPE MEMORY
                 </button>
               </div>
               <%= if @status && @status.conversation_players && @status.conversation_players != [] do %>
@@ -587,14 +588,9 @@ defmodule McFunWeb.BotConfigModalLive do
   end
 
   def handle_event("clear_conversation", %{"bot" => bot}, socket) do
-    info = McFun.ChatBot.info(bot)
-
-    for _player <- info[:conversation_players] || [] do
-      McFun.ChatBot.set_personality(bot, info[:personality] || default_personality())
-    end
-
-    McFun.Bot.chat(bot, "Memory cleared!")
-    notify_parent(socket, {:flash, :info, "#{bot} conversations cleared"})
+    McFun.ChatBot.wipe_memory(bot)
+    McFun.Bot.chat(bot, "Memory wiped!")
+    notify_parent(socket, {:flash, :info, "#{bot} memory wiped"})
     notify_parent(socket, :refresh_bot_statuses)
     {:noreply, socket}
   catch
