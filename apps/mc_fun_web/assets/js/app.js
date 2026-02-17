@@ -88,7 +88,68 @@ const Hooks = {
       })
     }
   },
-  WorldMap: {
+  WorldMap: (() => {
+    // Static block color map — built once, shared across all instances
+    const BLOCK_COLORS = {
+      grass_block: [86, 140, 60],
+      short_grass: [76, 130, 50],
+      tall_grass: [76, 130, 50],
+      dirt: [134, 96, 67],
+      stone: [128, 128, 128],
+      cobblestone: [120, 120, 120],
+      deepslate: [80, 80, 85],
+      water: [50, 90, 180],
+      sand: [219, 207, 163],
+      gravel: [140, 133, 126],
+      oak_log: [109, 85, 50],
+      spruce_log: [58, 37, 16],
+      birch_log: [216, 210, 192],
+      jungle_log: [87, 67, 27],
+      dark_oak_log: [60, 46, 26],
+      oak_leaves: [58, 95, 22],
+      spruce_leaves: [42, 75, 42],
+      birch_leaves: [68, 105, 38],
+      jungle_leaves: [45, 90, 15],
+      dark_oak_leaves: [38, 72, 18],
+      oak_planks: [162, 131, 78],
+      snow: [240, 240, 255],
+      snow_block: [240, 240, 255],
+      powder_snow: [235, 235, 250],
+      ice: [145, 190, 230],
+      packed_ice: [130, 170, 215],
+      blue_ice: [100, 150, 230],
+      clay: [160, 166, 179],
+      terracotta: [152, 94, 67],
+      sandstone: [216, 203, 155],
+      red_sand: [190, 100, 50],
+      red_sandstone: [186, 99, 44],
+      netherrack: [100, 38, 38],
+      end_stone: [220, 220, 170],
+      obsidian: [20, 18, 30],
+      bedrock: [50, 50, 50],
+      iron_ore: [150, 140, 130],
+      coal_ore: [80, 80, 80],
+      gold_ore: [160, 150, 80],
+      diamond_ore: [100, 200, 210],
+      lapis_ore: [50, 70, 160],
+      redstone_ore: [150, 40, 40],
+      emerald_ore: [50, 180, 80],
+      copper_ore: [130, 100, 70],
+      andesite: [136, 136, 136],
+      diorite: [188, 188, 188],
+      granite: [153, 114, 99],
+      tuff: [108, 109, 102],
+      mycelium: [111, 99, 107],
+      podzol: [122, 89, 45],
+      farmland: [110, 75, 45],
+      dirt_path: [148, 130, 82],
+      moss_block: [80, 120, 50],
+      mud: [60, 55, 50],
+      lava: [207, 92, 15],
+    }
+    const DEFAULT_COLOR = [100, 100, 100]
+
+    return {
     mounted() {
       this.canvas = this.el.querySelector('canvas')
       this.ctx = this.canvas.getContext('2d')
@@ -179,37 +240,68 @@ const Hooks = {
       const cz = this.center.z
       const halfW = w / 2
       const halfH = h / 2
+      const data = this.terrainData
 
       // Find Y range for height shading
       let minY = 320, maxY = -64
-      for (const block of this.terrainData) {
-        const y = block[2]
+      for (let i = 0; i < data.length; i++) {
+        const y = data[i][2]
         if (y < minY) minY = y
         if (y > maxY) maxY = y
       }
       const yRange = Math.max(maxY - minY, 1)
 
-      for (const block of this.terrainData) {
-        const bx = block[0]
-        const bz = block[1]
-        const by = block[2]
-        const name = block[3]
+      if (zoom >= 1) {
+        // At zoom >= 1, use ImageData pixel buffer for speed
+        const imgData = ctx.getImageData(0, 0, w, h)
+        const pixels = imgData.data
+        const blockSize = Math.ceil(zoom)
 
-        const screenX = halfW + (bx - cx) * zoom + this.offsetX
-        const screenZ = halfH + (bz - cz) * zoom + this.offsetZ
+        for (let i = 0; i < data.length; i++) {
+          const block = data[i]
+          const sx = Math.floor(halfW + (block[0] - cx) * zoom + this.offsetX)
+          const sz = Math.floor(halfH + (block[1] - cz) * zoom + this.offsetZ)
 
-        // Frustum cull
-        if (screenX + zoom < 0 || screenX > w || screenZ + zoom < 0 || screenZ > h) continue
+          // Frustum cull
+          if (sx + blockSize < 0 || sx >= w || sz + blockSize < 0 || sz >= h) continue
 
-        // Base color from block type
-        const baseColor = this.blockColor(name)
+          const rgb = BLOCK_COLORS[block[3]] || DEFAULT_COLOR
+          const shade = 0.5 + ((block[2] - minY) / yRange) * 0.5
+          const r = Math.min(255, (rgb[0] * shade) | 0)
+          const g = Math.min(255, (rgb[1] * shade) | 0)
+          const b = Math.min(255, (rgb[2] * shade) | 0)
 
-        // Height shading: lighten high, darken low
-        const heightFactor = (by - minY) / yRange  // 0 to 1
-        const shade = 0.5 + heightFactor * 0.5      // 0.5 to 1.0
+          // Fill block rectangle in pixel buffer
+          const x0 = Math.max(0, sx), x1 = Math.min(w, sx + blockSize)
+          const z0 = Math.max(0, sz), z1 = Math.min(h, sz + blockSize)
+          for (let pz = z0; pz < z1; pz++) {
+            let off = (pz * w + x0) * 4
+            for (let px = x0; px < x1; px++) {
+              pixels[off] = r
+              pixels[off + 1] = g
+              pixels[off + 2] = b
+              pixels[off + 3] = 255
+              off += 4
+            }
+          }
+        }
+        ctx.putImageData(imgData, 0, 0)
+      } else {
+        // At sub-pixel zoom, fillRect is fine (fewer visible blocks)
+        for (let i = 0; i < data.length; i++) {
+          const block = data[i]
+          const screenX = halfW + (block[0] - cx) * zoom + this.offsetX
+          const screenZ = halfH + (block[1] - cz) * zoom + this.offsetZ
+          if (screenX + 1 < 0 || screenX > w || screenZ + 1 < 0 || screenZ > h) continue
 
-        ctx.fillStyle = this.shadeColor(baseColor, shade)
-        ctx.fillRect(Math.floor(screenX), Math.floor(screenZ), Math.ceil(zoom), Math.ceil(zoom))
+          const rgb = BLOCK_COLORS[block[3]] || DEFAULT_COLOR
+          const shade = 0.5 + ((block[2] - minY) / yRange) * 0.5
+          const r = Math.min(255, (rgb[0] * shade) | 0)
+          const g = Math.min(255, (rgb[1] * shade) | 0)
+          const b = Math.min(255, (rgb[2] * shade) | 0)
+          ctx.fillStyle = `rgb(${r},${g},${b})`
+          ctx.fillRect(screenX, screenZ, zoom, zoom)
+        }
       }
     },
 
@@ -224,11 +316,11 @@ const Hooks = {
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'
       ctx.lineWidth = 1
 
-      // Chunk boundaries (every 16 blocks)
-      const startBlockX = cx - halfW / zoom
-      const endBlockX = cx + halfW / zoom
-      const startBlockZ = cz - halfH / zoom
-      const endBlockZ = cz + halfH / zoom
+      // Chunk boundaries (every 16 blocks), accounting for pan offset
+      const startBlockX = cx - (halfW + this.offsetX) / zoom
+      const endBlockX = cx + (halfW - this.offsetX) / zoom
+      const startBlockZ = cz - (halfH + this.offsetZ) / zoom
+      const endBlockZ = cz + (halfH - this.offsetZ) / zoom
 
       const firstChunkX = Math.floor(startBlockX / 16) * 16
       const firstChunkZ = Math.floor(startBlockZ / 16) * 16
@@ -318,85 +410,29 @@ const Hooks = {
         this.canvas.style.cursor = 'grabbing'
       })
 
-      window.addEventListener('mousemove', (e) => {
+      this._moveHandler = (e) => {
         if (!this.dragging || !this.lastMouse) return
         this.offsetX += e.clientX - this.lastMouse.x
         this.offsetZ += e.clientY - this.lastMouse.y
         this.lastMouse = { x: e.clientX, y: e.clientY }
         this.render()
-      })
+      }
+      window.addEventListener('mousemove', this._moveHandler)
 
-      window.addEventListener('mouseup', () => {
+      this._upHandler = () => {
         this.dragging = false
         this.lastMouse = null
         this.canvas.style.cursor = 'default'
-      })
-    },
-
-    blockColor(name) {
-      const colors = {
-        grass_block: [86, 140, 60],
-        dirt: [134, 96, 67],
-        stone: [128, 128, 128],
-        cobblestone: [120, 120, 120],
-        deepslate: [80, 80, 85],
-        water: [50, 90, 180],
-        sand: [219, 207, 163],
-        gravel: [140, 133, 126],
-        oak_log: [109, 85, 50],
-        spruce_log: [58, 37, 16],
-        birch_log: [216, 210, 192],
-        oak_leaves: [58, 95, 22],
-        spruce_leaves: [42, 75, 42],
-        birch_leaves: [68, 105, 38],
-        oak_planks: [162, 131, 78],
-        snow: [240, 240, 255],
-        snow_block: [240, 240, 255],
-        ice: [145, 190, 230],
-        packed_ice: [130, 170, 215],
-        blue_ice: [100, 150, 230],
-        clay: [160, 166, 179],
-        terracotta: [152, 94, 67],
-        sandstone: [216, 203, 155],
-        red_sand: [190, 100, 50],
-        netherrack: [100, 38, 38],
-        end_stone: [220, 220, 170],
-        obsidian: [20, 18, 30],
-        bedrock: [50, 50, 50],
-        iron_ore: [150, 140, 130],
-        coal_ore: [80, 80, 80],
-        gold_ore: [160, 150, 80],
-        diamond_ore: [100, 200, 210],
-        lapis_ore: [50, 70, 160],
-        redstone_ore: [150, 40, 40],
-        emerald_ore: [50, 180, 80],
-        copper_ore: [130, 100, 70],
-        andesite: [136, 136, 136],
-        diorite: [188, 188, 188],
-        granite: [153, 114, 99],
-        tuff: [108, 109, 102],
-        mycelium: [111, 99, 107],
-        podzol: [122, 89, 45],
-        farmland: [110, 75, 45],
-        path: [148, 130, 82],
-        dirt_path: [148, 130, 82],
-        moss_block: [80, 120, 50],
-        mud: [60, 55, 50],
       }
-      return colors[name] || [100, 100, 100]  // fallback gray
-    },
-
-    shadeColor(rgb, factor) {
-      const r = Math.min(255, Math.round(rgb[0] * factor))
-      const g = Math.min(255, Math.round(rgb[1] * factor))
-      const b = Math.min(255, Math.round(rgb[2] * factor))
-      return `rgb(${r},${g},${b})`
+      window.addEventListener('mouseup', this._upHandler)
     },
 
     destroyed() {
       if (this._resizeHandler) window.removeEventListener('resize', this._resizeHandler)
+      if (this._moveHandler) window.removeEventListener('mousemove', this._moveHandler)
+      if (this._upHandler) window.removeEventListener('mouseup', this._upHandler)
     }
-  },
+  }})(),
   ChatScroll: {
     mounted() {
       this.isAtBottom = true

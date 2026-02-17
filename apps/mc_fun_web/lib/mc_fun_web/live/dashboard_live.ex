@@ -324,11 +324,12 @@ defmodule McFunWeb.DashboardLive do
 
     send_update(McFunWeb.MapPanelLive,
       id: component_id,
-      terrain_data: blocks,
+      terrain_block_count: length(blocks),
       scan_center: %{x: center["x"], z: center["z"]},
       scanning: false
     )
 
+    # Push raw data to JS hook only (not stored in assigns)
     socket = push_event(socket, "terrain_data", %{blocks: blocks, center: center})
     {:noreply, socket}
   end

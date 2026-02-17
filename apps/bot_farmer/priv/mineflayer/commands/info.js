@@ -125,15 +125,19 @@ function terrainScan(bot) {
 
   const blocks = []
   const minY = -64  // 1.18+ world bottom
+  const cursor = new Vec3(0, 0, 0)  // reuse single Vec3 to avoid 100K+ allocations
 
   for (const { chunkX, chunkZ, column } of columns) {
     const cx = parseInt(chunkX) * 16
     const cz = parseInt(chunkZ) * 16
     for (let bx = 0; bx < 16; bx++) {
+      cursor.x = bx
       for (let bz = 0; bz < 16; bz++) {
+        cursor.z = bz
         // Scan down from top to find surface block
         for (let by = 319; by >= minY; by--) {
-          const stateId = column.getBlockStateId(new Vec3(bx, by, bz))
+          cursor.y = by
+          const stateId = column.getBlockStateId(cursor)
           if (stateId && !airIds.has(stateId)) {
             const blockInfo = mcData.blocksByStateId[stateId]
             blocks.push([cx + bx, cz + bz, by, blockInfo ? blockInfo.name : 'unknown'])

@@ -7,7 +7,7 @@ defmodule McFunWeb.MapPanelLive do
     socket =
       socket
       |> assign(assigns)
-      |> assign_new(:terrain_data, fn -> nil end)
+      |> assign_new(:terrain_block_count, fn -> 0 end)
       |> assign_new(:scan_bot, fn -> nil end)
       |> assign_new(:scanning, fn -> false end)
       |> assign_new(:scan_center, fn -> nil end)
@@ -77,7 +77,7 @@ defmodule McFunWeb.MapPanelLive do
 
         <div :if={@scan_center} class="text-[10px] text-[#666] mb-2 flex gap-4">
           <span>CENTER: <span class="text-[#00ffff]">{@scan_center.x}, {@scan_center.z}</span></span>
-          <span>BLOCKS: <span class="text-[#00ff88]">{if @terrain_data, do: length(@terrain_data), else: 0}</span></span>
+          <span>BLOCKS: <span class="text-[#00ff88]">{@terrain_block_count}</span></span>
           <span class="text-[#555]">scroll=zoom, drag=pan</span>
         </div>
 
