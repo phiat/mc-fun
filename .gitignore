@@ -21,6 +21,7 @@ data/
 # Runtime data files
 apps/mc_fun/priv/chat_log.jsonl
 apps/mc_fun/priv/cost_data.json
+apps/bot_farmer/priv/bot_fleet.json
 
 # Logs
 /log/
