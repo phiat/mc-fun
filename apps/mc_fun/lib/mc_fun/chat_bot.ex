@@ -204,11 +204,11 @@ defmodule McFun.ChatBot do
   def handle_info({:llm_response, username, {:ok, response, tool_calls}}, state) do
     reply = strip_thinking(response)
 
-    # Broadcast to dashboard (full response for debugging)
+    # Broadcast stripped response to dashboard
     tools_str =
       Enum.map_join(tool_calls, ", ", fn %{name: n, args: a} -> "#{n}(#{inspect(a)})" end)
 
-    broadcast_llm_event(state.bot_name, username, response, tools_str)
+    broadcast_llm_event(state.bot_name, username, reply, tools_str)
 
     # Send chat and execute tools asynchronously to avoid blocking ChatBot
     bot_name = state.bot_name
@@ -268,7 +268,7 @@ defmodule McFun.ChatBot do
           Enum.map_join(actions, ", ", fn {action, _} -> to_string(action) end)
       end
 
-    broadcast_llm_event(state.bot_name, username, response, actions_str)
+    broadcast_llm_event(state.bot_name, username, reply, actions_str)
 
     # Send chat and execute actions asynchronously to avoid blocking ChatBot
     bot_name = state.bot_name
@@ -347,7 +347,7 @@ defmodule McFun.ChatBot do
       bot_name = state.bot_name
       Task.start(fn -> send_paginated(bot_name, reply) end)
 
-      broadcast_llm_event(state.bot_name, nil, text, "heartbeat")
+      broadcast_llm_event(state.bot_name, nil, reply, "heartbeat")
     end
 
     now = System.monotonic_time(:millisecond)
@@ -364,7 +364,7 @@ defmodule McFun.ChatBot do
       bot_name = state.bot_name
       Task.start(fn -> send_paginated(bot_name, reply) end)
 
-      broadcast_llm_event(state.bot_name, nil, text, "heartbeat")
+      broadcast_llm_event(state.bot_name, nil, reply, "heartbeat")
     end
 
     now = System.monotonic_time(:millisecond)
