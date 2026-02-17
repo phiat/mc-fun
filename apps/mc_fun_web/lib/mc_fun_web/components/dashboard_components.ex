@@ -127,7 +127,7 @@ defmodule McFunWeb.DashboardComponents do
     ~H"""
     <div
       id={"bot-card-#{@bot}"}
-      class="border border-[#333] bg-[#111] p-3 hover:border-[#00ffff]/40 transition-all group"
+      class="border border-[#333] bg-[#111] p-3 hover:border-[#00ffff]/40 transition-all group flex flex-col"
     >
       <%!-- Unit header --%>
       <div class="flex items-center justify-between mb-2">
@@ -159,7 +159,7 @@ defmodule McFunWeb.DashboardComponents do
       </div>
 
       <%!-- Unit details --%>
-      <div class="text-[10px] tracking-wider space-y-1 text-[#888]">
+      <div class="text-[10px] tracking-wider space-y-1 text-[#888] flex-1 flex flex-col">
         <%= if @status do %>
           <%= if @status.chatbot do %>
             <div class="flex justify-between">
@@ -288,7 +288,7 @@ defmodule McFunWeb.DashboardComponents do
               </details>
             <% end %>
             <%!-- Model switcher --%>
-            <div class="pt-1 flex gap-1">
+            <div class="pt-1 mt-auto flex gap-1">
               <select
                 id={"model-select-#{@bot}"}
                 class="flex-1 bg-[#0a0a0f] border border-[#333] text-[#aaa] px-2 py-1 text-[10px] focus:border-[#00ffff] focus:outline-none"
