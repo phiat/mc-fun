@@ -305,6 +305,22 @@ defmodule McFun.FleetChat do
     {:noreply, state}
   end
 
+  # Delayed topic injection for staggered multi-bot topics
+  @impl true
+  def handle_info({:delayed_topic_inject, bot, topic}, state) do
+    if bot_alive?(bot) do
+      Logger.info("FleetChat: delayed topic inject for #{bot}: #{inspect(topic)}")
+
+      try do
+        McFun.ChatBot.inject_topic(bot, topic)
+      catch
+        _, _ -> :ok
+      end
+    end
+
+    {:noreply, state}
+  end
+
   # Refresh bot subscriptions
   @impl true
   def handle_info(:refresh_subscriptions, state) do
@@ -443,7 +459,7 @@ defmodule McFun.FleetChat do
   end
 
   defp inject_topic_if_ready(state, eligible_bots, enabled_topics) do
-    # Prefer bots that have at least one nearby peer (so the response chain works)
+    # Prefer bots that have at least one nearby peer
     bots_with_peers =
       Enum.filter(eligible_bots, fn bot ->
         Enum.any?(eligible_bots, fn other ->
@@ -455,21 +471,32 @@ defmodule McFun.FleetChat do
 
     candidates = if bots_with_peers != [], do: bots_with_peers, else: eligible_bots
     topic = Enum.random(enabled_topics)
-    bot = Enum.random(candidates)
 
-    if bots_with_peers == [] do
-      Logger.warning(
-        "FleetChat: no bots with nearby peers found, injecting topic via #{bot} anyway"
-      )
-    end
+    # Inject into multiple bots with staggered delays so the topic sparks
+    # a real conversation instead of relying on the chat relay chain
+    shuffled = Enum.shuffle(candidates)
+    participants = Enum.take(shuffled, min(3, length(shuffled)))
 
-    Logger.info("FleetChat: injecting topic via #{bot}: #{inspect(topic)}")
+    Logger.info(
+      "FleetChat: injecting topic #{inspect(topic)} into #{inspect(participants)}"
+    )
 
-    try do
-      McFun.ChatBot.inject_topic(bot, topic)
-    catch
-      _, _ -> :ok
-    end
+    participants
+    |> Enum.with_index()
+    |> Enum.each(fn {bot, idx} ->
+      # First bot responds immediately, others stagger 3-6s apart
+      delay = if idx == 0, do: 0, else: idx * Enum.random(3_000..6_000)
+
+      if delay == 0 do
+        try do
+          McFun.ChatBot.inject_topic(bot, topic)
+        catch
+          _, _ -> :ok
+        end
+      else
+        Process.send_after(self(), {:delayed_topic_inject, bot, topic}, delay)
+      end
+    end)
 
     state
   end

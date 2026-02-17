@@ -426,12 +426,12 @@ defmodule McFun.ChatBot do
 
       system_prompt =
         personality <>
-          "\n\nSomeone nearby brought up a topic in Minecraft chat. " <>
-          "Respond naturally and in-character. Share your thoughts, ask a follow-up question, " <>
-          "or riff on the idea. Do NOT repeat the topic back. " <>
-          "Keep it to 1-2 sentences. No markdown. Be fun and in-character.\n" <>
-          context <>
-          "\n\nTopic: #{topic}"
+          "\n\nYou just thought of something related to: \"#{topic}\"\n" <>
+          "Share your OWN unique take, opinion, or story about it. " <>
+          "Do NOT just restate the topic — express a genuine thought or reaction. " <>
+          "Ask the other players a question about it to spark discussion.\n" <>
+          "1-2 sentences. No markdown. Stay in-character.\n" <>
+          context
 
       result =
         Groq.chat(system_prompt, [],
