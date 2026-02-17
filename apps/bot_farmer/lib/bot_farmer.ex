@@ -282,6 +282,7 @@ defmodule BotFarmer do
     cond do
       action && action.source == :tool -> %{state: action.action, source: :tool}
       action && action.source == :behavior -> %{state: action.action, source: :behavior}
+      action && action.source == :action_parser -> %{state: action.action, source: :action_parser}
       behavior -> %{state: behavior.behavior, source: :behavior}
       true -> %{state: :idle, source: nil}
     end

@@ -86,7 +86,7 @@ MC Fun — System Architecture
 │  │      │      │  │                                             │   │ │ │
 │  │      │      │  │  Actions: dig, place, goto, follow,         │   │ │ │
 │  │      │      │  │    jump, attack, craft, equip, mine, ...    │   │ │ │
-│  │      │      │  │  Status: pos (5s poll), HP, food            │   │ │ │
+│  │      │      │  │  Status: pos (3s poll), HP, food            │   │ │ │
 │  │      │      │  └─────────────────────────────────────────────┘   │ │ │
 │  │      │      │                                                     │ │ │
 │  │      │      │  ┌──────────────┐  ┌────────────────────┐          │ │ │
@@ -102,7 +102,7 @@ MC Fun — System Architecture
 │  │      │      │  └──────────────┘  └────────────┘       │          │ │ │
 │  │      │      │                                          │          │ │ │
 │  │      │      │  ┌──────────────────┐  ┌──────────────┐ │          │ │ │
-│  │      │      │  │ BotRegistry      │  │ McFun.BotChat│ │          │ │ │
+│  │      │      │  │ BotRegistry      │  │ McFun.FleetChat│ │          │ │ │
 │  │      │      │  │ (Registry)       │  │ Bot-to-bot   │ │          │ │ │
 │  │      │      │  │                  │  │ coordinator  │ │          │ │ │
 │  │      │      │  │ Keys:            │  │ Topic inject │ │          │ │ │
@@ -169,7 +169,7 @@ App Dependency Graph
   mc_fun              (infrastructure: RCON, LLM, PubSub, Events, ChatLog, World)
     ^
     │
-  bot_farmer          (bot runtime: Bot, ChatBot, BotBehaviors, BotChat + persistence)
+  bot_farmer          (bot runtime: Bot, ChatBot, BotBehaviors, FleetChat + persistence)
     ^         ^
     │         │
   mc_fun_web ─┘       (dashboard: LiveView — depends on BOTH)

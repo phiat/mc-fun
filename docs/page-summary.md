@@ -4,7 +4,7 @@
 
 MC Fun is an Elixir/Phoenix umbrella application that serves as a real-time control panel for a remote Minecraft server. It connects to the server over RCON (the Minecraft remote console protocol) and deploys AI-powered bots into the game world using mineflayer, a Node.js Minecraft client library. The system is split into three OTP applications: `mc_fun` (engine -- RCON, LLM client, event system, world manipulation), `bot_farmer` (bot fleet management -- spawning, AI chat, behaviors, persistence), and `mc_fun_web` (Phoenix LiveView dashboard with tabbed UI for controlling everything from a browser).
 
-The bots are the core feature. Each bot is an Erlang Port wrapping a Node.js process that runs mineflayer, communicating via newline-delimited JSON over stdin/stdout. Bots have LLM-powered personalities (via Groq API), can respond to player chat, whisper privately, execute physical actions in the game (dig, follow, craft, navigate), and hold multi-turn conversations with per-player history. Multiple bots can talk to each other through a proximity-based coordinator (`McFun.BotChat`) that manages cooldowns, exchange limits, and topic injection. The dashboard provides real-time visibility into bot status, player data, chat logs, LLM costs, RCON commands, and in-game effects -- all streamed over Phoenix PubSub and LiveView websockets.
+The bots are the core feature. Each bot is an Erlang Port wrapping a Node.js process that runs mineflayer, communicating via newline-delimited JSON over stdin/stdout. Bots have LLM-powered personalities (via Groq API), can respond to player chat, whisper privately, execute physical actions in the game (dig, follow, craft, navigate), and hold multi-turn conversations with per-player history. Multiple bots can talk to each other through a proximity-based coordinator (`McFun.FleetChat`) that manages cooldowns, exchange limits, and topic injection. The dashboard provides real-time visibility into bot status, player data, chat logs, LLM costs, RCON commands, and in-game effects -- all streamed over Phoenix PubSub and LiveView websockets.
 
 The project has no database. All state lives in GenServers, ETS tables, and JSON files on disk. Bot fleet configurations persist to `bot_fleet.json` and auto-deploy on startup. LLM costs persist to `cost_data.json`. Chat history is a JSONL ring buffer. This keeps the operational footprint minimal -- `mix phx.server` is the only command needed to run the entire system.
 
@@ -20,15 +20,15 @@ The project has no database. All state lives in GenServers, ETS tables, and JSON
 
 - **RCON truncation workaround**: Full entity data blobs exceed RCON's response limit. When `parse_entity_response/1` returns `:truncated`, `LogWatcher` falls back to per-field queries (`Health`, `Pos`, `Dimension`, `foodLevel`), each short enough to parse completely.
 
-- **Whisper deduplication**: Every bot receives every whisper event from mineflayer. Without coordination, all bots would respond. `McFun.BotChat.claim_whisper/3` implements first-come-first-served claiming with a 5-second TTL map -- only the first bot to claim a `{username, message}` pair responds.
+- **Whisper deduplication**: Every bot receives every whisper event from mineflayer. Without coordination, all bots would respond. `McFun.FleetChat.claim_whisper/3` implements first-come-first-served claiming with a 5-second TTL map -- only the first bot to claim a `{username, message}` pair responds.
 
 - **LLM tool calling with fallback**: Models that support OpenAI-style function calling (llama, qwen, openai/, meta-llama/) get a structured tool schema with 18 tools. Models without tool support fall back to `McFun.ActionParser`, a regex-based system that detects trigger phrases ("on my way", "I'll dig") in the LLM's natural language response and maps them to bot actions.
 
-- **Chain-of-thought stripping**: Reasoning models include internal thinking in their output. `ChatBot.strip_thinking/1` looks for a `REPLY:` marker, falls back to quoted-text extraction for CoT patterns, and passes through clean responses unchanged.
+- **Chain-of-thought stripping**: Reasoning models include internal thinking in their output. `ChatBot.TextFilter.strip_thinking/1` looks for a `REPLY:` marker, falls back to quoted-text extraction for CoT patterns, and passes through clean responses unchanged.
 
-- **Bot-to-bot conversation control**: `McFun.BotChat` prevents infinite chat loops with per-pair exchange limits (configurable max exchanges before cooldown), probabilistic response chance (boosted when a bot's name is mentioned), random delays (2-5s) for natural pacing, and proximity checks using 3D Euclidean distance between bot positions.
+- **Bot-to-bot conversation control**: `McFun.FleetChat` prevents infinite chat loops with per-pair exchange limits (configurable max exchanges before cooldown), probabilistic response chance (boosted when a bot's name is mentioned), random delays (2-5s) for natural pacing, and proximity checks using 3D Euclidean distance between bot positions.
 
-- **Action priority and source tracking**: Bot actions carry a `:source` tag (`:tool` from LLM tool calls, `:behavior` from patrol/guard loops). Tool-initiated actions take priority -- behavior ticks are suppressed while a tool action is running. Action completion events from bridge.js clear the tracking state and broadcast to the dashboard.
+- **Action priority and source tracking**: Bot actions carry a `:source` tag (`:tool` from LLM tool calls, `:behavior` from patrol/guard loops, `:action_parser` from regex fallback). Tool-initiated actions take priority -- behavior ticks are suppressed while a tool action is running. Action completion events from bridge.js clear the tracking state and broadcast to the dashboard. ChatBot also broadcasts `activity_change` events for `:thinking` and `:chatting` states.
 
 ## Notable Implementation Details
 
@@ -50,6 +50,6 @@ The project has no database. All state lives in GenServers, ETS tables, and JSON
 
 - **Survey as synchronous call**: `McFun.Bot.survey/1` is the only blocking call to bridge.js. It stores the caller in a `listeners` list, sends the survey command, and replies when the survey event arrives. This gives the LLM a snapshot of nearby blocks, entities, inventory, and vitals before generating each response.
 
-- **Paginated chat output**: `ChatBot.send_paginated/2` chunks LLM responses at word boundaries (180 chars/line, max 4 lines, 300ms delay between) to stay within Minecraft's chat display limits.
+- **Paginated chat output**: `ChatBot.TextFilter.send_paginated/4` chunks LLM responses at word boundaries (180 chars/line, max 4 lines, 300ms delay between) to stay within Minecraft's chat display limits.
 
 - **`BotFarmer.BotStore` auto-deploy**: Fleet configuration persists to JSON. On startup, all saved bots are spawned with 2-second stagger to avoid overwhelming the MC server. Config writes are debounced at 3 seconds. The `BotFarmer` facade automatically triggers persistence on spawn, stop, and config changes.

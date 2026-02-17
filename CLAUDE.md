@@ -168,11 +168,11 @@ After start: `McFun.Events.Handlers.register_all()` registers default event hand
 - **LLM tool calling**: ChatBot uses Groq function/tool calling for capable models (llama, qwen, openai/, meta-llama/, moonshotai/). Falls back to regex ActionParser for non-tool models (compound). `supports_tools?/1` checks prefixes.
 - **ActionParser**: Regex fallback for models without tool support. Parses trigger phrases → `{action, params}` tuples → executed via `Bot.send_command/3` with `source: :action_parser`. Actions are tracked on dashboard.
 - **Bot survey**: `Bot.survey/1` — synchronous call to bridge.js that returns nearby blocks, inventory, entities, position, health. Used by ChatBot before each LLM call for environment context.
-- **Thinking strip**: `ChatBot.strip_thinking/1` removes chain-of-thought from reasoning models. Expects `REPLY:` marker; falls back to quoted-text extraction for CoT patterns.
-- **Paginated chat**: `ChatBot.send_paginated/2` chunks responses at word boundaries (180 chars/line, max 4 lines, 300ms delay between).
+- **Thinking strip**: `ChatBot.TextFilter.strip_thinking/1` removes chain-of-thought from reasoning models. Expects `REPLY:` marker; falls back to quoted-text extraction for CoT patterns.
+- **Paginated chat**: `ChatBot.TextFilter.send_paginated/4` chunks responses at word boundaries (180 chars/line, max 4 lines, 300ms delay between).
 - **Bot action tracking**: `Bot.set_action/3` broadcasts `action_change` PubSub events. `maybe_track_action` tracks `source: :tool`, `:behavior`, or `:action_parser`. ChatBot broadcasts `activity_change` events for `:thinking` and `:chatting` states (source: `:llm`). Dashboard maps action atoms to display text (`:find_and_dig` → "MINING", `:thinking` → "THINKING", `nil` → "IDLE").
 - **Topic injection**: `FleetChat.do_inject_topic` injects into up to 3 bots with staggered delays (3-6s apart per bot), not just 1. Each bot generates its own response independently.
-- **Bot status polling**: Bot.ex polls bridge for position every 5s, tracks health/food/dimension from events. `terminate/2` closes port on shutdown.
+- **Bot status polling**: Bot.ex polls bridge for position every 3s and inventory every 5s, tracks health/food/dimension from events. `terminate/2` closes port on shutdown.
 - **Port safety**: Bot.ex checks `Port.info` before sending commands; returns `{:error, :port_dead}` if port is gone.
 - **Presets**: `McFun.Presets.all/0`, `by_category/0`, `get/1`. 22 presets in 6 categories.
 - **Bot actions in bridge.js**: dig, dig_looking_at, dig_area, find_and_dig, survey, place, equip, craft, drop, goto, follow, jump, sneak, attack, move, look, chat, whisper, inventory, position, players, quit.
