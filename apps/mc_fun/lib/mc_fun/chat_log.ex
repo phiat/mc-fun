@@ -84,6 +84,9 @@ defmodule McFun.ChatLog do
     File.close(state.log_file)
     File.write!(@log_file, "")
     file = File.open!(@log_file, [:append, :utf8])
+
+    Phoenix.PubSub.broadcast(McFun.PubSub, "chat_log", :chat_log_cleared)
+
     {:reply, :ok, %{state | entries: [], next_id: 1, log_file: file}}
   end
 
@@ -268,7 +271,8 @@ defmodule McFun.ChatLog do
   end
 
   defp active_bot_names do
-    McFun.BotSupervisor.list_bots()
+    # Runtime lookup — BotSupervisor lives in bot_farmer app (no compile-time dep)
+    Registry.select(McFun.BotRegistry, [{{:"$1", :_, :_}, [{:is_binary, :"$1"}], [:"$1"]}])
   rescue
     _ -> []
   end

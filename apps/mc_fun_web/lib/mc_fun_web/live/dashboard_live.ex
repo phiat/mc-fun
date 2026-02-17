@@ -308,6 +308,11 @@ defmodule McFunWeb.DashboardLive do
   end
 
   @impl true
+  def handle_info(:chat_log_cleared, socket) do
+    {:noreply, assign(socket, chat_entries: [])}
+  end
+
+  @impl true
   def handle_info(_, socket), do: {:noreply, socket}
 
   # --- Helpers ---
