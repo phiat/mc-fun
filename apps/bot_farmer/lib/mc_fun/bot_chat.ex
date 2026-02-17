@@ -393,7 +393,7 @@ defmodule McFun.BotChat do
       Logger.info("BotChat: injecting topic via #{bot}: #{topic}")
 
       try do
-        McFun.Bot.chat(bot, topic)
+        McFun.ChatBot.inject_topic(bot, topic)
       catch
         _, _ -> :ok
       end

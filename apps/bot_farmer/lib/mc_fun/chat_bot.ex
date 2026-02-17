@@ -96,6 +96,11 @@ defmodule McFun.ChatBot do
     GenServer.cast(via(bot_name), {:inject_bot_message, from_bot, message})
   end
 
+  @doc "Inject a topic for the bot to respond to naturally via LLM (used by BotChat topic injection)."
+  def inject_topic(bot_name, topic) do
+    GenServer.cast(via(bot_name), {:inject_topic, topic})
+  end
+
   defp via(bot_name), do: {:via, Registry, {McFun.BotRegistry, {:chat_bot, bot_name}}}
 
   # GenServer callbacks
@@ -391,8 +396,76 @@ defmodule McFun.ChatBot do
     {:noreply, schedule_heartbeat(state)}
   end
 
+  # Topic injection responses
+  @impl true
+  def handle_info({:topic_response, {:ok, text}}, state) do
+    reply = strip_thinking(text)
+
+    if reply != "" do
+      bot_name = state.bot_name
+      Task.start(fn -> send_paginated(bot_name, reply) end)
+      broadcast_llm_event(state.bot_name, nil, reply, "topic")
+    end
+
+    {:noreply, track_last_message(state, text)}
+  end
+
+  @impl true
+  def handle_info({:topic_response, {:ok, text, _tool_calls}}, state) do
+    reply = strip_thinking(text)
+
+    if reply != "" do
+      bot_name = state.bot_name
+      Task.start(fn -> send_paginated(bot_name, reply) end)
+      broadcast_llm_event(state.bot_name, nil, reply, "topic")
+    end
+
+    {:noreply, track_last_message(state, text)}
+  end
+
+  @impl true
+  def handle_info({:topic_response, {:error, reason}}, state) do
+    Logger.warning("ChatBot #{state.bot_name}: topic LLM error: #{inspect(reason)}")
+    {:noreply, state}
+  end
+
   @impl true
   def handle_info(_msg, state), do: {:noreply, state}
+
+  # Topic injection — bot generates a natural response to a topic via LLM
+  @impl true
+  def handle_cast({:inject_topic, topic}, state) do
+    bot_name = state.bot_name
+    personality = state.personality
+    model = state.model
+    pid = self()
+
+    Task.start(fn ->
+      survey_context = fetch_survey(bot_name)
+      bot_status = format_bot_status(bot_name)
+
+      system_prompt =
+        personality <>
+          "\n\nSomeone nearby brought up a topic in Minecraft chat. " <>
+          "Respond naturally and in-character. Share your thoughts, ask a follow-up question, " <>
+          "or riff on the idea. Do NOT repeat the topic back. " <>
+          "Keep it to 1-2 sentences. No markdown. Be fun and in-character.\n" <>
+          survey_context <>
+          bot_status <>
+          "\n\nTopic: #{topic}"
+
+      result =
+        Groq.chat(system_prompt, [],
+          max_tokens: chat_bot_config(:heartbeat_max_tokens),
+          model: model,
+          bot_name: bot_name
+        )
+
+      send(pid, {:topic_response, result})
+    end)
+
+    {:noreply, state}
+  end
 
   # Bot-to-bot message injection from BotChat coordinator
   @impl true
