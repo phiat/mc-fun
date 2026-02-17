@@ -13,7 +13,7 @@ defmodule McFun.BotBehaviors do
       McFun.BotBehaviors.start_mine("BotName", "iron_ore", max_count: 64)
       McFun.BotBehaviors.stop("BotName")
   """
-  use GenServer
+  use GenServer, restart: :temporary
   require Logger
 
   @tick_interval 1_000

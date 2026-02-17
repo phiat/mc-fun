@@ -16,7 +16,7 @@ defmodule McFun.ChatBot do
 
   alias McFun.LLM.Groq
   alias McFun.LLM.ModelCache
-  use GenServer
+  use GenServer, restart: :temporary
   require Logger
 
   @max_history 20

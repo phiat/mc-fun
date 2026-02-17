@@ -3,7 +3,7 @@ defmodule McFun.Bot do
   GenServer that manages a mineflayer bot via an Erlang Port.
   Communicates with the Node.js bridge over stdin/stdout using newline-delimited JSON.
   """
-  use GenServer
+  use GenServer, restart: :temporary
   require Logger
 
   defstruct [
