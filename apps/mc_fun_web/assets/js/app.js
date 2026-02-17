@@ -93,6 +93,7 @@ const Hooks = {
       this.canvas = this.el.querySelector('canvas')
       this.ctx = this.canvas.getContext('2d')
       this.terrainData = null
+      this._terrainSnapshot = null
       this.entities = []
       this.center = { x: 0, z: 0 }
       this.zoom = 2        // pixels per block
@@ -101,8 +102,9 @@ const Hooks = {
       this.dragging = false
       this.lastMouse = null
 
+      this._resizeHandler = () => this.resizeCanvas()
       this.resizeCanvas()
-      window.addEventListener('resize', () => this.resizeCanvas())
+      window.addEventListener('resize', this._resizeHandler)
 
       // Receive terrain data from LiveView
       this.handleEvent("terrain_data", (data) => {
@@ -111,13 +113,16 @@ const Hooks = {
         // Reset view to center on scan
         this.offsetX = 0
         this.offsetZ = 0
+        // Hide placeholder
+        const ph = this.el.querySelector('#world-map-placeholder')
+        if (ph) ph.style.display = 'none'
         this.render()
       })
 
-      // Receive entity positions (bots + players)
+      // Receive entity positions (bots + players) — only re-render overlay
       this.handleEvent("entity_positions", (data) => {
         this.entities = data.entities || []
-        this.render()
+        this.renderOverlay()
       })
 
       this.setupInteraction()
@@ -145,7 +150,27 @@ const Hooks = {
 
       this.renderTerrain(ctx, w, h)
       this.renderGrid(ctx, w, h)
+
+      // Snapshot terrain+grid (before entities) for fast overlay redraws
+      this._terrainSnapshot = ctx.getImageData(0, 0, w, h)
+
       this.renderEntities(ctx, w, h)
+    },
+
+    // Fast path: restore terrain snapshot and redraw only entities
+    renderOverlay() {
+      if (!this.ctx) return
+      const w = this.canvas.width
+      const h = this.canvas.height
+
+      if (this._terrainSnapshot && this._terrainSnapshot.width === w) {
+        // Restore terrain+grid snapshot, then draw fresh entities
+        this.ctx.putImageData(this._terrainSnapshot, 0, 0)
+        this.renderEntities(this.ctx, w, h)
+      } else {
+        // No snapshot yet, full render
+        this.render()
+      }
     },
 
     renderTerrain(ctx, w, h) {
@@ -262,26 +287,26 @@ const Hooks = {
     },
 
     setupInteraction() {
-      // Mouse wheel zoom
+      // Mouse wheel zoom (toward mouse position)
       this.canvas.addEventListener('wheel', (e) => {
         e.preventDefault()
         const oldZoom = this.zoom
         const factor = e.deltaY > 0 ? 0.85 : 1.18
         this.zoom = Math.max(0.5, Math.min(8, this.zoom * factor))
+        const ratio = this.zoom / oldZoom
 
-        // Zoom toward mouse position
+        // Zoom toward mouse: keep the world point under cursor fixed
         const rect = this.canvas.getBoundingClientRect()
         const mx = e.clientX - rect.left
         const mz = e.clientY - rect.top
         const halfW = this.canvas.width / 2
         const halfH = this.canvas.height / 2
 
-        this.offsetX = mx - (mx - this.offsetX) * (this.zoom / oldZoom) + (halfW - mx) * (this.zoom / oldZoom - 1) * 0 // simplified
-        this.offsetZ = mz - (mz - this.offsetZ) * (this.zoom / oldZoom) + (halfH - mz) * (this.zoom / oldZoom - 1) * 0
-
-        // Simpler approach: scale offsets proportionally
-        this.offsetX = this.offsetX * (this.zoom / oldZoom)
-        this.offsetZ = this.offsetZ * (this.zoom / oldZoom)
+        // Point on canvas relative to center (before zoom)
+        const dx = mx - halfW - this.offsetX
+        const dz = mz - halfH - this.offsetZ
+        this.offsetX -= dx * (ratio - 1)
+        this.offsetZ -= dz * (ratio - 1)
 
         this.render()
       }, { passive: false })
@@ -369,7 +394,7 @@ const Hooks = {
     },
 
     destroyed() {
-      // cleanup handled by GC
+      if (this._resizeHandler) window.removeEventListener('resize', this._resizeHandler)
     }
   },
   ChatScroll: {

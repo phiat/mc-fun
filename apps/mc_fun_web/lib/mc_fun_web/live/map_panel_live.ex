@@ -2,8 +2,6 @@ defmodule McFunWeb.MapPanelLive do
   @moduledoc "Map panel LiveComponent — top-down terrain map from bot chunk data."
   use McFunWeb, :live_component
 
-  require Logger
-
   @impl true
   def update(assigns, socket) do
     socket =
@@ -92,7 +90,7 @@ defmodule McFunWeb.MapPanelLive do
         >
           <canvas id="world-map-canvas" class="w-full h-full" />
           <div
-            :if={!@terrain_data}
+            id="world-map-placeholder"
             class="absolute inset-0 flex items-center justify-center text-[#333] text-xs tracking-widest"
           >
             SELECT A BOT AND CLICK SCAN
