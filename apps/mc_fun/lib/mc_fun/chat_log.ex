@@ -138,6 +138,7 @@ defmodule McFun.ChatLog do
 
   def handle_info({:bot_event, bot_name, %{"event" => "llm_response"} = data}, state) do
     message = Map.get(data, "response", "")
+    username = Map.get(data, "username", "")
     tools = Map.get(data, "tools")
 
     metadata =
@@ -147,7 +148,15 @@ defmodule McFun.ChatLog do
         %{}
       end
 
-    entry = build_entry(state.next_id, bot_name, message, :llm_response, bot_name, metadata)
+    # If the bot is responding to another bot, classify as bot_to_bot
+    type =
+      if username != "" and MapSet.member?(state.subscribed_bots, username) do
+        :bot_to_bot
+      else
+        :llm_response
+      end
+
+    entry = build_entry(state.next_id, bot_name, message, type, bot_name, metadata)
     {:noreply, push_entry(state, entry)}
   end
 

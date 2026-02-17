@@ -106,7 +106,8 @@ defmodule McFun.FleetChat do
       subscribed_bots: MapSet.new(),
       pending_responses: MapSet.new(),
       recent_whispers: %{},
-      recent_chats: %{}
+      recent_chats: %{},
+      recent_heartbeats: %{}
     }
 
     Process.send_after(self(), :refresh_subscriptions, 1_000)
@@ -237,6 +238,19 @@ defmodule McFun.FleetChat do
     end
   end
 
+  # LLM response event — track heartbeat-sourced messages so we can filter them
+  # from bot-to-bot chat triggers (heartbeat chatter shouldn't spark conversations).
+  @impl true
+  def handle_info(
+        {:bot_event, bot_name,
+         %{"event" => "llm_response", "tools" => "heartbeat"}},
+        state
+      ) do
+    now = System.monotonic_time(:millisecond)
+    recent = Map.put(state.recent_heartbeats, bot_name, now)
+    {:noreply, %{state | recent_heartbeats: recent}}
+  end
+
   # Chat event from a bot — the event arrives on the LISTENER's PubSub topic,
   # so `listener` is which bot heard it, while `username` is who actually spoke.
   # Multiple bots hear the same chat, so we deduplicate using recent_chats.
@@ -256,7 +270,7 @@ defmodule McFun.FleetChat do
 
     already_seen = Map.has_key?(recent_chats, chat_key)
 
-    if speaker in known_bots and not already_seen and not heartbeat_message?(message) do
+    if speaker in known_bots and not already_seen and not recent_heartbeat?(state, speaker) do
       recent_chats = Map.put(recent_chats, chat_key, now)
       state = %{state | recent_chats: recent_chats}
       {:noreply, maybe_trigger_response(state, speaker, message, known_bots)}
@@ -426,8 +440,13 @@ defmodule McFun.FleetChat do
     Registry.lookup(McFun.BotRegistry, {:chat_bot, bot_name}) != []
   end
 
-  defp heartbeat_message?(message) do
-    Enum.any?(McFun.ChatBot.heartbeat_prompts(), &String.contains?(message, &1))
+  # A bot's chat is a heartbeat if we recently saw an llm_response event
+  # tagged "heartbeat" from that bot (within 10s — covers LLM latency + paginated send).
+  defp recent_heartbeat?(state, bot_name) do
+    case Map.get(state.recent_heartbeats, bot_name) do
+      nil -> false
+      ts -> System.monotonic_time(:millisecond) - ts < 10_000
+    end
   end
 
   defp do_inject_topic(state) do
