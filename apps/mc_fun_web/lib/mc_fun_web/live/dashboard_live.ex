@@ -11,6 +11,8 @@ defmodule McFunWeb.DashboardLive do
 
   alias McFun.LLM.ModelCache
 
+  @valid_tabs ~w(bots players rcon effects display events chat)
+
   @impl true
   def mount(_params, _session, socket) do
     initial_bots = list_bots()
@@ -64,8 +66,15 @@ defmodule McFunWeb.DashboardLive do
   end
 
   @impl true
+  def handle_params(params, _uri, socket) do
+    tab = params["tab"] || "bots"
+    tab = if tab in @valid_tabs, do: tab, else: "bots"
+    {:noreply, assign(socket, active_tab: tab)}
+  end
+
+  @impl true
   def handle_event("switch_tab", %{"tab" => tab}, socket) do
-    {:noreply, socket |> clear_flash() |> assign(active_tab: tab)}
+    {:noreply, socket |> clear_flash() |> push_patch(to: ~p"/dashboard?tab=#{tab}")}
   end
 
   def handle_event("toggle_sidebar", _params, socket) do

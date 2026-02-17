@@ -365,17 +365,21 @@ defmodule McFunWeb.UnitsPanelLive do
   # --- Failed Bot Actions ---
 
   def handle_event("whitelist_and_deploy", %{"name" => name}, socket) do
+    parent = socket.assigns.parent_pid
+
     Task.start(fn ->
-      parent = socket.assigns.parent_pid
+      try do
+        msg =
+          case McFun.Rcon.command("whitelist add #{name}") do
+            {:ok, reply} -> reply
+            {:error, reason} -> "Failed: #{inspect(reason)}"
+          end
 
-      msg =
-        case McFun.Rcon.command("whitelist add #{name}") do
-          {:ok, reply} -> reply
-          {:error, reason} -> "Failed: #{inspect(reason)}"
-        end
-
-      send(parent, {:flash, :info, "Whitelist: #{msg}"})
-      send(parent, {:clear_failed, name})
+        send(parent, {:flash, :info, "Whitelist: #{msg}"})
+        send(parent, {:clear_failed, name})
+      rescue
+        e -> send(parent, {:flash, :error, "Whitelist failed: #{Exception.message(e)}"})
+      end
     end)
 
     # Re-deploy after a short delay for whitelist to take effect
@@ -383,18 +387,21 @@ defmodule McFunWeb.UnitsPanelLive do
     personality = socket.assigns.deploy_personality
 
     Task.start(fn ->
-      Process.sleep(500)
-      parent = socket.assigns.parent_pid
+      try do
+        Process.sleep(500)
 
-      case McFun.BotSupervisor.spawn_bot(name) do
-        {:ok, _pid} ->
-          Process.sleep(2_000)
-          ensure_chatbot(name, model, personality)
-          send(parent, {:flash, :info, "#{name} deployed after whitelist"})
-          send(parent, :refresh_bots)
+        case McFun.BotSupervisor.spawn_bot(name) do
+          {:ok, _pid} ->
+            Process.sleep(2_000)
+            ensure_chatbot(name, model, personality)
+            send(parent, {:flash, :info, "#{name} deployed after whitelist"})
+            send(parent, :refresh_bots)
 
-        {:error, reason} ->
-          send(parent, {:flash, :error, "Deploy failed: #{inspect(reason)}"})
+          {:error, reason} ->
+            send(parent, {:flash, :error, "Deploy failed: #{inspect(reason)}"})
+        end
+      rescue
+        e -> send(parent, {:flash, :error, "Deploy failed: #{Exception.message(e)}"})
       end
     end)
 
@@ -585,9 +592,13 @@ defmodule McFunWeb.UnitsPanelLive do
     parent = socket.assigns.parent_pid
 
     Task.start(fn ->
-      Process.sleep(2_000)
-      ensure_chatbot(name, model, personality)
-      send(parent, :refresh_bots)
+      try do
+        Process.sleep(2_000)
+        ensure_chatbot(name, model, personality)
+        send(parent, :refresh_bots)
+      rescue
+        e -> send(parent, {:flash, :error, "ChatBot attach failed: #{Exception.message(e)}"})
+      end
     end)
   end
 

@@ -90,8 +90,17 @@ defmodule McFunWeb.DisplayPanelLive do
     block = Map.get(params, "block", "diamond_block")
 
     if text != "" do
-      Task.start(fn -> McFun.Display.write(text, {x, y, z}, block: block) end)
-      send(socket.assigns.parent_pid, {:flash, :info, "Placing '#{text}' at #{x},#{y},#{z}"})
+      parent = socket.assigns.parent_pid
+
+      Task.start(fn ->
+        try do
+          McFun.Display.write(text, {x, y, z}, block: block)
+        rescue
+          e -> send(parent, {:flash, :error, "Display failed: #{Exception.message(e)}"})
+        end
+      end)
+
+      send(parent, {:flash, :info, "Placing '#{text}' at #{x},#{y},#{z}"})
       {:noreply, socket}
     else
       {:noreply, socket}

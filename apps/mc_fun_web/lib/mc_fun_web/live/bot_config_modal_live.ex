@@ -19,9 +19,14 @@ defmodule McFunWeb.BotConfigModalLive do
       role="dialog"
       aria-modal="true"
       aria-label={"Configure #{@bot}"}
+      phx-window-keydown="close_bot_config"
+      phx-key="Escape"
     >
       <div class="fixed inset-0" phx-click="close_bot_config"></div>
-      <div class="relative z-10 w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-[#0d0d14] border-2 border-[#00ffff]/40 shadow-[0_0_30px_rgba(0,255,255,0.15)]">
+      <.focus_wrap
+        id="bot-config-focus-wrap"
+        class="relative z-10 w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-[#0d0d14] border-2 border-[#00ffff]/40 shadow-[0_0_30px_rgba(0,255,255,0.15)]"
+      >
         <%!-- Modal header --%>
         <div class="flex items-center justify-between px-4 py-3 border-b border-[#222]">
           <div class="flex items-center gap-2">
@@ -479,7 +484,7 @@ defmodule McFunWeb.BotConfigModalLive do
             </div>
           </div>
         </div>
-      </div>
+      </.focus_wrap>
     </div>
     """
   end

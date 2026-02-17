@@ -96,19 +96,24 @@ defmodule McFunWeb.EffectsPanelLive do
   @impl true
   def handle_event("fire_effect", %{"effect" => effect}, socket) do
     target = socket.assigns.effect_target
+    parent = socket.assigns.parent_pid
 
     Task.start(fn ->
-      case effect do
-        "celebration" -> McFun.Effects.celebration(target)
-        "welcome" -> McFun.Effects.welcome(target)
-        "death" -> McFun.Effects.death_effect(target)
-        "achievement" -> McFun.Effects.achievement_fanfare(target)
-        "firework" -> McFun.Effects.firework(target)
-        _ -> :ok
+      try do
+        case effect do
+          "celebration" -> McFun.Effects.celebration(target)
+          "welcome" -> McFun.Effects.welcome(target)
+          "death" -> McFun.Effects.death_effect(target)
+          "achievement" -> McFun.Effects.achievement_fanfare(target)
+          "firework" -> McFun.Effects.firework(target)
+          _ -> :ok
+        end
+      rescue
+        e -> send(parent, {:flash, :error, "Effect failed: #{Exception.message(e)}"})
       end
     end)
 
-    send(socket.assigns.parent_pid, {:flash, :info, "FX #{effect} >> #{target}"})
+    send(parent, {:flash, :info, "FX #{effect} >> #{target}"})
     {:noreply, socket}
   end
 
@@ -124,10 +129,17 @@ defmodule McFunWeb.EffectsPanelLive do
     target = socket.assigns.effect_target
     subtitle = params["subtitle"]
     opts = if subtitle && subtitle != "", do: [subtitle: subtitle], else: []
+    parent = socket.assigns.parent_pid
 
-    Task.start(fn -> McFun.Effects.title(target, title, opts) end)
+    Task.start(fn ->
+      try do
+        McFun.Effects.title(target, title, opts)
+      rescue
+        e -> send(parent, {:flash, :error, "Title failed: #{Exception.message(e)}"})
+      end
+    end)
 
-    send(socket.assigns.parent_pid, {:flash, :info, "Title >> #{target}: #{title}"})
+    send(parent, {:flash, :info, "Title >> #{target}: #{title}"})
     {:noreply, socket}
   end
 

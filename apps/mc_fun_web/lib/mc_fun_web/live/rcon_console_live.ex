@@ -344,13 +344,17 @@ defmodule McFunWeb.RconConsoleLive do
     lv = socket.assigns.parent_pid
 
     Task.start(fn ->
-      result =
-        case McFun.Rcon.command(cmd) do
-          {:ok, response} -> response
-          {:error, reason} -> "ERR: #{inspect(reason)}"
-        end
+      try do
+        result =
+          case McFun.Rcon.command(cmd) do
+            {:ok, response} -> response
+            {:error, reason} -> "ERR: #{inspect(reason)}"
+          end
 
-      send(lv, {:rcon_result, cmd, result})
+        send(lv, {:rcon_result, cmd, result})
+      rescue
+        e -> send(lv, {:flash, :error, "RCON failed: #{Exception.message(e)}"})
+      end
     end)
 
     {:noreply, assign(socket, rcon_input: "")}
@@ -424,13 +428,17 @@ defmodule McFunWeb.RconConsoleLive do
     lv = socket.assigns.parent_pid
 
     Task.start(fn ->
-      result =
-        case McFun.Rcon.command(cmd) do
-          {:ok, r} -> r
-          {:error, r} -> "ERR: #{inspect(r)}"
-        end
+      try do
+        result =
+          case McFun.Rcon.command(cmd) do
+            {:ok, r} -> r
+            {:error, r} -> "ERR: #{inspect(r)}"
+          end
 
-      send(lv, {:rcon_result, cmd, result})
+        send(lv, {:rcon_result, cmd, result})
+      rescue
+        e -> send(lv, {:flash, :error, "RCON failed: #{Exception.message(e)}"})
+      end
     end)
 
     {:noreply, socket}
@@ -440,7 +448,11 @@ defmodule McFunWeb.RconConsoleLive do
     lv = socket.assigns.parent_pid
 
     Task.start(fn ->
-      Enum.each(commands, &exec_and_report_rcon(&1, lv))
+      try do
+        Enum.each(commands, &exec_and_report_rcon(&1, lv))
+      rescue
+        e -> send(lv, {:flash, :error, "RCON failed: #{Exception.message(e)}"})
+      end
     end)
 
     {:noreply, socket}

@@ -62,7 +62,7 @@
   <div class="border-b border-[#222] px-4 py-1.5 bg-[#0d0d14]">
     <div class="max-w-7xl mx-auto flex items-center justify-between">
       <div class="flex gap-1" role="tablist" aria-label="Dashboard sections">
-        <button
+        <.link
           :for={
             {id, label} <- [
               {"bots", "UNITS"},
@@ -74,6 +74,7 @@
               {"chat", "CHAT"}
             ]
           }
+          patch={~p"/dashboard?tab=#{id}"}
           role="tab"
           aria-selected={to_string(@active_tab == id)}
           aria-controls={"panel-#{id}"}
@@ -81,11 +82,9 @@
             if(@active_tab == id,
               do: "border-[#00ffff] text-[#00ffff] bg-[#00ffff]/10",
               else: "border-[#333] text-[#666] hover:border-[#555] hover:text-[#aaa]")}
-          phx-click="switch_tab"
-          phx-value-tab={id}
         >
           {label}
-        </button>
+        </.link>
       </div>
 
       <div :if={@bots != []} class="flex items-center gap-2">
