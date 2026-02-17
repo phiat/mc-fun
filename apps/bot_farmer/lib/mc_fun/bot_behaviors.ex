@@ -183,7 +183,7 @@ defmodule McFun.BotBehaviors do
 
   @impl true
   def handle_info(
-        {:bot_event, "find_and_dig_done", %{"success" => true}},
+        {:bot_event, _bot_name, %{"event" => "find_and_dig_done"}},
         %{behavior: :mine} = state
       ) do
     mined = state.params.mined + 1

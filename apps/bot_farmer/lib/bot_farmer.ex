@@ -11,7 +11,7 @@ defmodule BotFarmer do
 
   # ── Fleet lifecycle ──────────────────────────────────────────────────
 
-  @doc "Spawn a bot, optionally attach chatbot and start a behavior."
+  @doc "Spawn a bot and save config to BotStore. Chatbot attach and behavior start are the caller's responsibility."
   def spawn_bot(name, opts \\ []) do
     model = Keyword.get(opts, :model)
     personality = Keyword.get(opts, :personality)
@@ -73,7 +73,7 @@ defmodule BotFarmer do
       group_chat_enabled: chatbot_info && chatbot_info[:group_chat_enabled],
       last_message: chatbot_info && chatbot_info[:last_message],
       behavior: behavior_info,
-      cost: McFun.CostTracker.get_bot_cost(name)
+      cost: try_bot_cost(name)
     }
   end
 
@@ -254,5 +254,11 @@ defmodule BotFarmer do
     _ -> nil
   catch
     _, _ -> nil
+  end
+
+  defp try_bot_cost(name) do
+    McFun.CostTracker.get_bot_cost(name)
+  rescue
+    _ -> nil
   end
 end
