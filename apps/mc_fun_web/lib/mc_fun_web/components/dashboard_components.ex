@@ -299,10 +299,10 @@ defmodule McFunWeb.DashboardComponents do
               </details>
             <% end %>
             <%!-- Model switcher --%>
-            <div class="pt-1 mt-auto flex gap-1">
+            <div class="pt-1 mt-auto flex gap-1 items-center overflow-hidden">
               <select
                 id={"model-select-#{@bot}"}
-                class="flex-1 bg-[#0a0a0f] border border-[#333] text-[#aaa] px-2 py-1 text-[10px] focus:border-[#00ffff] focus:outline-none"
+                class="flex-1 min-w-0 bg-[#0a0a0f] border border-[#333] text-[#aaa] px-2 py-1 text-[10px] focus:border-[#00ffff] focus:outline-none truncate"
                 phx-change="select_card_model"
                 phx-target={@target}
                 name="model"
@@ -322,7 +322,7 @@ defmodule McFunWeb.DashboardComponents do
                 phx-target={@target}
                 phx-value-bot={@bot}
                 disabled={is_nil(@pending_model)}
-                class={"px-2 py-1 border text-[9px] tracking-widest transition-all " <>
+                class={"shrink-0 px-2 py-1 border text-[9px] tracking-widest transition-all " <>
                   if(@pending_model,
                     do: "border-[#00ff88] text-[#00ff88] hover:bg-[#00ff88]/10",
                     else: "border-[#333] text-[#444] cursor-not-allowed")}
