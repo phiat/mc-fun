@@ -118,14 +118,14 @@ defmodule McFunWeb.MapPanelLive do
 
     players =
       for {name, data} <- player_statuses, data[:position] do
-        pos = data.position
+        {x, y, z} = data.position
 
         %{
           name: name,
           type: "player",
-          x: pos[:x] || pos["x"],
-          y: pos[:y] || pos["y"],
-          z: pos[:z] || pos["z"],
+          x: x,
+          y: y,
+          z: z,
           color: "#00ff88"
         }
       end
