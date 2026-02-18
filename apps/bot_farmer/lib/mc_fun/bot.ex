@@ -16,7 +16,8 @@ defmodule McFun.Bot do
     :dimension,
     :current_action,
     inventory: [],
-    timers: []
+    timers: [],
+    line_buffer: ""
   ]
 
   # Client API
@@ -235,7 +236,7 @@ defmodule McFun.Bot do
           {:args, [bridge_path]},
           {:env, base_env},
           {:cd, to_charlist(Path.dirname(bridge_path))},
-          {:line, 16_384}
+          {:line, 1_048_576}
         ]
       )
 
@@ -318,7 +319,10 @@ defmodule McFun.Bot do
   end
 
   @impl true
-  def handle_info({port, {:data, {:eol, line}}}, %{port: port} = state) do
+  def handle_info({port, {:data, {:eol, tail}}}, %{port: port} = state) do
+    line = state.line_buffer <> tail
+    state = %{state | line_buffer: ""}
+
     case Jason.decode(line) do
       {:ok, %{"event" => "survey"} = event} ->
         # Reply to waiting survey caller
@@ -374,9 +378,8 @@ defmodule McFun.Bot do
   end
 
   @impl true
-  def handle_info({port, {:data, {:noeol, _partial}}}, %{port: port} = state) do
-    # partial line, ignore (will come as eol eventually)
-    {:noreply, state}
+  def handle_info({port, {:data, {:noeol, chunk}}}, %{port: port} = state) do
+    {:noreply, %{state | line_buffer: state.line_buffer <> chunk}}
   end
 
   @impl true
