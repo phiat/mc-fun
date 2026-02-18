@@ -124,18 +124,36 @@ function terrainScan(bot) {
   }
 
   const blocks = []
-  const minY = -64  // 1.18+ world bottom
-  const cursor = new Vec3(0, 0, 0)  // reuse single Vec3 to avoid 100K+ allocations
+  const cursor = new Vec3(0, 0, 0)
 
   for (const { chunkX, chunkZ, column } of columns) {
     const cx = parseInt(chunkX) * 16
     const cz = parseInt(chunkZ) * 16
+    const colMinY = column.minY != null ? column.minY : -64
+    const sections = column.sections
+
+    // Find highest populated section to avoid scanning empty air above
+    let topSectionIdx = sections ? sections.length - 1 : 23
+    if (sections) {
+      while (topSectionIdx >= 0 && !sections[topSectionIdx]) topSectionIdx--
+      if (topSectionIdx < 0) continue  // entirely empty column
+    }
+    const startY = colMinY + (topSectionIdx + 1) * 16 - 1
+
     for (let bx = 0; bx < 16; bx++) {
       cursor.x = bx
       for (let bz = 0; bz < 16; bz++) {
         cursor.z = bz
-        // Scan down from top to find surface block
-        for (let by = 319; by >= minY; by--) {
+        for (let by = startY; by >= colMinY; by--) {
+          // Skip entire empty sections
+          if (sections) {
+            const secIdx = (by - colMinY) >> 4
+            if (!sections[secIdx]) {
+              // Jump to bottom of this section
+              by = colMinY + secIdx * 16
+              continue
+            }
+          }
           cursor.y = by
           const stateId = column.getBlockStateId(cursor)
           if (stateId && !airIds.has(stateId)) {
@@ -152,7 +170,7 @@ function terrainScan(bot) {
   send({
     event: 'terrain_scan',
     center: { x: Math.round(pos.x), z: Math.round(pos.z) },
-    blocks: blocks,  // [[x, z, y, name], ...]
+    blocks: blocks,
     chunk_count: columns.length
   })
 }

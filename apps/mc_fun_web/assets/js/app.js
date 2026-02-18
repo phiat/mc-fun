@@ -157,11 +157,12 @@ const Hooks = {
       this._terrainSnapshot = null
       this.entities = []
       this.center = { x: 0, z: 0 }
-      this.zoom = 2        // pixels per block
-      this.offsetX = 0     // pan offset in pixels
+      this.zoom = 2        // CSS pixels per block
+      this.offsetX = 0     // pan offset in CSS pixels
       this.offsetZ = 0
       this.dragging = false
       this.lastMouse = null
+      this.dpr = window.devicePixelRatio || 1
 
       this._resizeHandler = () => this.resizeCanvas()
       this.resizeCanvas()
@@ -192,15 +193,21 @@ const Hooks = {
 
     resizeCanvas() {
       const rect = this.el.getBoundingClientRect()
-      this.canvas.width = rect.width
-      this.canvas.height = rect.height
+      this.dpr = window.devicePixelRatio || 1
+      // Set canvas buffer to native resolution, CSS stays at layout size
+      this.canvas.width = Math.floor(rect.width * this.dpr)
+      this.canvas.height = Math.floor(rect.height * this.dpr)
+      this.canvas.style.width = rect.width + 'px'
+      this.canvas.style.height = rect.height + 'px'
+      this.cssW = rect.width
+      this.cssH = rect.height
       this.render()
     },
 
     render() {
       if (!this.ctx) return
       const ctx = this.ctx
-      const w = this.canvas.width
+      const w = this.canvas.width   // native pixels
       const h = this.canvas.height
 
       // Clear
@@ -216,6 +223,7 @@ const Hooks = {
       this._terrainSnapshot = ctx.getImageData(0, 0, w, h)
 
       this.renderEntities(ctx, w, h)
+      this.renderHUD(ctx, w, h)
     },
 
     // Fast path: restore terrain snapshot and redraw only entities
@@ -225,17 +233,23 @@ const Hooks = {
       const h = this.canvas.height
 
       if (this._terrainSnapshot && this._terrainSnapshot.width === w) {
-        // Restore terrain+grid snapshot, then draw fresh entities
         this.ctx.putImageData(this._terrainSnapshot, 0, 0)
         this.renderEntities(this.ctx, w, h)
+        this.renderHUD(this.ctx, w, h)
       } else {
-        // No snapshot yet, full render
         this.render()
       }
     },
 
+    // Convert CSS-space zoom/offset to native pixel coordinates
+    nativeZoom() { return this.zoom * this.dpr },
+    nativeOffsetX() { return this.offsetX * this.dpr },
+    nativeOffsetZ() { return this.offsetZ * this.dpr },
+
     renderTerrain(ctx, w, h) {
-      const zoom = this.zoom
+      const zoom = this.nativeZoom()
+      const ox = this.nativeOffsetX()
+      const oz = this.nativeOffsetZ()
       const cx = this.center.x
       const cz = this.center.z
       const halfW = w / 2
@@ -252,17 +266,16 @@ const Hooks = {
       const yRange = Math.max(maxY - minY, 1)
 
       if (zoom >= 1) {
-        // At zoom >= 1, use ImageData pixel buffer for speed
+        // Use ImageData pixel buffer for speed
         const imgData = ctx.getImageData(0, 0, w, h)
         const pixels = imgData.data
         const blockSize = Math.ceil(zoom)
 
         for (let i = 0; i < data.length; i++) {
           const block = data[i]
-          const sx = Math.floor(halfW + (block[0] - cx) * zoom + this.offsetX)
-          const sz = Math.floor(halfH + (block[1] - cz) * zoom + this.offsetZ)
+          const sx = Math.floor(halfW + (block[0] - cx) * zoom + ox)
+          const sz = Math.floor(halfH + (block[1] - cz) * zoom + oz)
 
-          // Frustum cull
           if (sx + blockSize < 0 || sx >= w || sz + blockSize < 0 || sz >= h) continue
 
           const rgb = BLOCK_COLORS[block[3]] || DEFAULT_COLOR
@@ -271,7 +284,6 @@ const Hooks = {
           const g = Math.min(255, (rgb[1] * shade) | 0)
           const b = Math.min(255, (rgb[2] * shade) | 0)
 
-          // Fill block rectangle in pixel buffer
           const x0 = Math.max(0, sx), x1 = Math.min(w, sx + blockSize)
           const z0 = Math.max(0, sz), z1 = Math.min(h, sz + blockSize)
           for (let pz = z0; pz < z1; pz++) {
@@ -287,11 +299,11 @@ const Hooks = {
         }
         ctx.putImageData(imgData, 0, 0)
       } else {
-        // At sub-pixel zoom, fillRect is fine (fewer visible blocks)
+        // Sub-pixel zoom: fillRect (fewer visible blocks at this scale)
         for (let i = 0; i < data.length; i++) {
           const block = data[i]
-          const screenX = halfW + (block[0] - cx) * zoom + this.offsetX
-          const screenZ = halfH + (block[1] - cz) * zoom + this.offsetZ
+          const screenX = halfW + (block[0] - cx) * zoom + ox
+          const screenZ = halfH + (block[1] - cz) * zoom + oz
           if (screenX + 1 < 0 || screenX > w || screenZ + 1 < 0 || screenZ > h) continue
 
           const rgb = BLOCK_COLORS[block[3]] || DEFAULT_COLOR
@@ -307,26 +319,28 @@ const Hooks = {
 
     renderGrid(ctx, w, h) {
       if (this.zoom < 1) return  // Too zoomed out for grid
-      const zoom = this.zoom
+      const zoom = this.nativeZoom()
+      const ox = this.nativeOffsetX()
+      const oz = this.nativeOffsetZ()
       const cx = this.center.x
       const cz = this.center.z
       const halfW = w / 2
       const halfH = h / 2
 
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'
-      ctx.lineWidth = 1
+      ctx.lineWidth = this.dpr
 
       // Chunk boundaries (every 16 blocks), accounting for pan offset
-      const startBlockX = cx - (halfW + this.offsetX) / zoom
-      const endBlockX = cx + (halfW - this.offsetX) / zoom
-      const startBlockZ = cz - (halfH + this.offsetZ) / zoom
-      const endBlockZ = cz + (halfH - this.offsetZ) / zoom
+      const startBlockX = cx - (halfW + ox) / zoom
+      const endBlockX = cx + (halfW - ox) / zoom
+      const startBlockZ = cz - (halfH + oz) / zoom
+      const endBlockZ = cz + (halfH - oz) / zoom
 
       const firstChunkX = Math.floor(startBlockX / 16) * 16
       const firstChunkZ = Math.floor(startBlockZ / 16) * 16
 
       for (let bx = firstChunkX; bx <= endBlockX; bx += 16) {
-        const sx = halfW + (bx - cx) * zoom + this.offsetX
+        const sx = halfW + (bx - cx) * zoom + ox
         ctx.beginPath()
         ctx.moveTo(sx, 0)
         ctx.lineTo(sx, h)
@@ -334,7 +348,7 @@ const Hooks = {
       }
 
       for (let bz = firstChunkZ; bz <= endBlockZ; bz += 16) {
-        const sz = halfH + (bz - cz) * zoom + this.offsetZ
+        const sz = halfH + (bz - cz) * zoom + oz
         ctx.beginPath()
         ctx.moveTo(0, sz)
         ctx.lineTo(w, sz)
@@ -343,17 +357,20 @@ const Hooks = {
     },
 
     renderEntities(ctx, w, h) {
-      const zoom = this.zoom
+      const zoom = this.nativeZoom()
+      const ox = this.nativeOffsetX()
+      const oz = this.nativeOffsetZ()
       const cx = this.center.x
       const cz = this.center.z
       const halfW = w / 2
       const halfH = h / 2
-      const radius = Math.max(4, zoom * 1.5)
+      const dpr = this.dpr
+      const radius = Math.max(4 * dpr, zoom * 1.5)
 
       for (const ent of this.entities) {
         if (ent.x == null || ent.z == null) continue
-        const sx = halfW + (ent.x - cx) * zoom + this.offsetX
-        const sz = halfH + (ent.z - cz) * zoom + this.offsetZ
+        const sx = halfW + (ent.x - cx) * zoom + ox
+        const sz = halfH + (ent.z - cz) * zoom + oz
 
         // Dot
         ctx.beginPath()
@@ -363,19 +380,31 @@ const Hooks = {
 
         // Glow
         ctx.beginPath()
-        ctx.arc(sx, sz, radius + 2, 0, Math.PI * 2)
+        ctx.arc(sx, sz, radius + 2 * dpr, 0, Math.PI * 2)
         ctx.strokeStyle = ent.color || '#ffffff'
-        ctx.lineWidth = 1
+        ctx.lineWidth = dpr
         ctx.globalAlpha = 0.4
         ctx.stroke()
         ctx.globalAlpha = 1.0
 
         // Label
-        ctx.font = '10px monospace'
+        ctx.font = `${10 * dpr}px monospace`
         ctx.fillStyle = ent.color || '#ffffff'
         ctx.textAlign = 'center'
-        ctx.fillText(ent.name, sx, sz - radius - 4)
+        ctx.fillText(ent.name, sx, sz - radius - 4 * dpr)
       }
+    },
+
+    renderHUD(ctx, w, h) {
+      const dpr = this.dpr
+      const pad = 8 * dpr
+      const fontSize = 10 * dpr
+      const blockRadius = Math.round((this.cssW || w) / this.zoom / 2)
+
+      ctx.font = `${fontSize}px monospace`
+      ctx.textAlign = 'right'
+      ctx.fillStyle = 'rgba(0, 255, 255, 0.5)'
+      ctx.fillText(`${this.zoom.toFixed(1)}x  ~${blockRadius * 2} blocks`, w - pad, h - pad)
     },
 
     setupInteraction() {
@@ -384,17 +413,17 @@ const Hooks = {
         e.preventDefault()
         const oldZoom = this.zoom
         const factor = e.deltaY > 0 ? 0.85 : 1.18
-        this.zoom = Math.max(0.5, Math.min(8, this.zoom * factor))
+        this.zoom = Math.max(0.25, Math.min(16, this.zoom * factor))
         const ratio = this.zoom / oldZoom
 
         // Zoom toward mouse: keep the world point under cursor fixed
+        // All in CSS pixel space (offsets are CSS pixels)
         const rect = this.canvas.getBoundingClientRect()
         const mx = e.clientX - rect.left
         const mz = e.clientY - rect.top
-        const halfW = this.canvas.width / 2
-        const halfH = this.canvas.height / 2
+        const halfW = (this.cssW || rect.width) / 2
+        const halfH = (this.cssH || rect.height) / 2
 
-        // Point on canvas relative to center (before zoom)
         const dx = mx - halfW - this.offsetX
         const dz = mz - halfH - this.offsetZ
         this.offsetX -= dx * (ratio - 1)
