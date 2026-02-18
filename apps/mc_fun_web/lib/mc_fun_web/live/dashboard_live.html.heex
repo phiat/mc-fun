@@ -73,7 +73,6 @@
           :for={
             {id, label} <- [
               {"bots", "UNITS"},
-              {"players", "PLAYERS"},
               {"rcon", "RCON"},
               {"effects", "FX"},
               {"display", "DISPLAY"},
@@ -119,31 +118,9 @@
       available_models={@available_models}
       failed_bots={@failed_bots}
       bot_chat_status={@bot_chat_status}
+      player_statuses={@player_statuses}
       parent_pid={self()}
     />
-
-    <%!-- ==================== PLAYERS TAB ==================== --%>
-    <div :if={@active_tab == "players"} id="panel-players" role="tabpanel" class="space-y-4">
-      <div class="border-2 border-[#333]/50 bg-[#0d0d14] p-4">
-        <div class="flex items-center justify-between mb-3">
-          <div class="text-[10px] tracking-widest text-[#888]">
-            ONLINE PLAYERS <span class="text-[#00ff88]">[{map_size(@player_statuses)}]</span>
-          </div>
-        </div>
-
-        <div :if={@player_statuses == %{}} class="text-center py-8 text-[#333] text-xs">
-          NO PLAYERS ONLINE
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          <McFunWeb.DashboardComponents.player_card
-            :for={{name, data} <- @player_statuses}
-            name={name}
-            data={data}
-          />
-        </div>
-      </div>
-    </div>
 
     <%!-- ==================== BOT CONFIG MODAL ==================== --%>
     <.live_component

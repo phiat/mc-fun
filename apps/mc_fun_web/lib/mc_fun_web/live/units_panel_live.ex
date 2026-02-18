@@ -17,7 +17,9 @@ defmodule McFunWeb.UnitsPanelLive do
      |> assign_new(:failed_bots, fn -> %{} end)
      |> assign_new(:bot_chat_status, fn -> %{enabled: false, pairs: %{}, config: %{}} end)
      |> assign_new(:new_topic, fn -> "" end)
-     |> assign_new(:interaction_open, fn -> false end)}
+     |> assign_new(:interaction_open, fn -> false end)
+     |> assign_new(:players_open, fn -> false end)
+     |> assign_new(:player_statuses, fn -> %{} end)}
   end
 
   @impl true
@@ -295,6 +297,40 @@ defmodule McFunWeb.UnitsPanelLive do
         </div>
       </div>
 
+      <%!-- Online Players (collapsible) --%>
+      <div class="border-2 border-[#00ff88]/20 bg-[#0d0d14]">
+        <button
+          phx-click="toggle_players_panel"
+          phx-target={@myself}
+          class="w-full flex items-center justify-between px-4 py-3 hover:bg-[#00ff88]/5 transition-all"
+        >
+          <div class="flex items-center gap-3">
+            <span class={"text-[10px] tracking-widest transition-transform " <>
+              if(@players_open, do: "rotate-90", else: "")}>
+              ▶
+            </span>
+            <span class="text-[10px] tracking-widest text-[#00ff88]/60">ONLINE PLAYERS</span>
+            <span class="text-[10px] tracking-widest text-[#00ff88]">
+              [{map_size(@player_statuses)}]
+            </span>
+          </div>
+        </button>
+
+        <div :if={@players_open} class="px-4 pb-4">
+          <div :if={@player_statuses == %{}} class="text-center py-4 text-[#333] text-xs">
+            NO PLAYERS ONLINE
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <McFunWeb.DashboardComponents.player_card
+              :for={{name, data} <- @player_statuses}
+              name={name}
+              data={data}
+            />
+          </div>
+        </div>
+      </div>
+
       <%!-- Commands reference --%>
       <div class="border border-[#222] bg-[#0d0d14] p-4">
         <div class="text-[10px] tracking-widest text-[#666] mb-2">COMMAND REFERENCE</div>
@@ -441,6 +477,10 @@ defmodule McFunWeb.UnitsPanelLive do
 
   def handle_event("toggle_interaction_panel", _params, socket) do
     {:noreply, assign(socket, interaction_open: !socket.assigns.interaction_open)}
+  end
+
+  def handle_event("toggle_players_panel", _params, socket) do
+    {:noreply, assign(socket, players_open: !socket.assigns.players_open)}
   end
 
   # --- Bot Chat Controls ---

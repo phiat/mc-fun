@@ -11,7 +11,7 @@ defmodule McFunWeb.DashboardLive do
 
   alias McFun.LLM.ModelCache
 
-  @valid_tabs ~w(bots players rcon effects display events chat map)
+  @valid_tabs ~w(bots rcon effects display events chat map)
 
   @impl true
   def mount(_params, _session, socket) do
