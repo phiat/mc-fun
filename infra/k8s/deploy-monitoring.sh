@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Deploy kube-prometheus-stack to k3s on miniwini
+# Deploy kube-prometheus-stack to k3s on your MC server host
 # Run from dev machine: bash infra/k8s/deploy-monitoring.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REMOTE="miniwini-1"
+REMOTE="${MC_REMOTE_HOST:?Set MC_REMOTE_HOST to your server hostname}"
 NAMESPACE="monitoring"
 
 echo "==> Deploying monitoring stack to k3s on ${REMOTE}"

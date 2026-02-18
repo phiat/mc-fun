@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install UnifiedMetrics plugin + JMX Prometheus exporter on the MC container
-# Run from your dev machine: ssh miniwini-1 -- bash < infra/scripts/setup-mc-metrics.sh
-# Or:  ssh miniwini-1 "bash -s" < infra/scripts/setup-mc-metrics.sh
+# Run from your dev machine: ssh <mc-server-host> -- bash < infra/scripts/setup-mc-metrics.sh
+# Or:  ssh <mc-server-host> "bash -s" < infra/scripts/setup-mc-metrics.sh
 set -euo pipefail
 
 CONTAINER="minecraft"

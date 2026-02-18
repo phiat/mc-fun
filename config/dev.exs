@@ -9,11 +9,11 @@ import Config
 config :mc_fun, McFunWeb.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
-  http: [ip: {127, 0, 0, 1}],
+  http: [ip: {0, 0, 0, 0}],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,
-  secret_key_base: "aofl7FkfIgfjKZrIWIJIePJipHGJeZpHEmstJr10krA1RznwFOmvabUbAc4Sfp/W",
+  secret_key_base: "dev-only-replace-me-with-mix-phx-gen-secret-in-production-00000000000000",
   watchers: [
     esbuild: {Esbuild, :install_and_run, [:mc_fun, ~w(--sourcemap=inline --watch)]},
     tailwind: {Tailwind, :install_and_run, [:mc_fun, ~w(--watch)]}

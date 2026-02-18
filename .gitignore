@@ -1,6 +1,9 @@
 # Environment / secrets
 .env
 
+# Beads issue tracker
+.beads/
+
 # OS
 .DS_Store
 Thumbs.db

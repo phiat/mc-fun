@@ -4,7 +4,7 @@ import Config
 # you can enable the server option below.
 config :mc_fun, McFunWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
-  secret_key_base: "ngCt3oL9HhAx6okxF2JC1U3GO2JqMhURwmaNqcTuGn/JafYn25q7fNVpW56BWBlp",
+  secret_key_base: "test-only-replace-me-with-mix-phx-gen-secret-in-production-00000000000000",
   server: false
 
 # Print only warnings and errors during test
