@@ -111,7 +111,8 @@ defmodule McFun.CostTracker do
   def handle_call(:reset, _from, state) do
     :ets.delete_all_objects(@table)
     save_to_disk()
-    broadcast_update()
+    summary = get_global_cost()
+    Phoenix.PubSub.broadcast(McFun.PubSub, "costs", {:cost_updated, summary})
     {:reply, :ok, state}
   end
 
@@ -134,7 +135,7 @@ defmodule McFun.CostTracker do
     # Update global
     update_entry(:global, prompt_tokens, completion_tokens, total_tokens, cost)
 
-    broadcast_update()
+    broadcast_update(bot_name)
   end
 
   defp update_entry(key, prompt_tokens, completion_tokens, total_tokens, cost) do
@@ -155,9 +156,10 @@ defmodule McFun.CostTracker do
     :ets.insert(@table, {key, updated})
   end
 
-  defp broadcast_update do
+  defp broadcast_update(bot_name) do
     summary = get_global_cost()
-    Phoenix.PubSub.broadcast(McFun.PubSub, "costs", {:cost_updated, summary})
+    bot_cost = get_bot_cost(bot_name)
+    Phoenix.PubSub.broadcast(McFun.PubSub, "costs", {:cost_updated, summary, bot_name, bot_cost})
   end
 
   defp schedule_flush(state) do

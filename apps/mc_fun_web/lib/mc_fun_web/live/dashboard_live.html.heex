@@ -75,7 +75,6 @@
               {"bots", "UNITS"},
               {"rcon", "RCON"},
               {"effects", "FX"},
-              {"display", "DISPLAY"},
               {"events", "EVENTS"},
               {"chat", "CHAT"},
               {"map", "MAP"}
@@ -152,16 +151,6 @@
       module={McFunWeb.EffectsPanelLive}
       id="effects-panel"
       effect_target={@effect_target}
-      bots={@bots}
-      player_statuses={@player_statuses}
-      parent_pid={self()}
-    />
-
-    <%!-- ==================== DISPLAY TAB ==================== --%>
-    <.live_component
-      :if={@active_tab == "display"}
-      module={McFunWeb.DisplayPanelLive}
-      id="display-panel"
       display_x={@display_x}
       display_y={@display_y}
       display_z={@display_z}

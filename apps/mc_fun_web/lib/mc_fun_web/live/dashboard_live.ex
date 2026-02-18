@@ -5,13 +5,13 @@ defmodule McFunWeb.DashboardLive do
 
   Tab content is delegated to LiveComponents:
   - UnitsPanelLive, RconConsoleLive, EventStreamLive,
-    EffectsPanelLive, DisplayPanelLive, BotConfigModalLive
+    EffectsPanelLive, BotConfigModalLive
   """
   use McFunWeb, :live_view
 
   alias McFun.LLM.ModelCache
 
-  @valid_tabs ~w(bots rcon effects display events chat map)
+  @valid_tabs ~w(bots rcon effects events chat map)
 
   @impl true
   def mount(_params, _session, socket) do
@@ -295,6 +295,13 @@ defmodule McFunWeb.DashboardLive do
     {:noreply, assign(socket, bot_chat_status: status)}
   end
 
+  @impl true
+  def handle_info({:cost_updated, summary, bot_name, bot_cost}, socket) do
+    statuses = update_bot_status(socket.assigns.bot_statuses, bot_name, %{cost: bot_cost})
+    {:noreply, assign(socket, cost_summary: summary, bot_statuses: statuses)}
+  end
+
+  # Backwards compat for old broadcast shape (e.g. from reset)
   @impl true
   def handle_info({:cost_updated, summary}, socket) do
     {:noreply, assign(socket, cost_summary: summary)}

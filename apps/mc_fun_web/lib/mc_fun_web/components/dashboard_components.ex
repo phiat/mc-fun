@@ -208,16 +208,14 @@ defmodule McFunWeb.DashboardComponents do
                 {if @status[:group_chat_enabled], do: "ON", else: "OFF"}
               </span>
             </div>
-            <%= if @status[:cost] && @status.cost.calls > 0 do %>
-              <div class="flex justify-between">
-                <span>COST</span>
-                <span class="text-[#ffcc00]">
-                  {McFun.CostTracker.format_cost(@status.cost.cost)} | {McFun.CostTracker.format_tokens(
-                    @status.cost.total_tokens
-                  )} tok
-                </span>
-              </div>
-            <% end %>
+            <div class="flex justify-between">
+              <span>COST</span>
+              <span class="text-[#ffcc00]">
+                {McFun.CostTracker.format_cost((@status[:cost] && @status.cost.cost) || 0.0)} | {McFun.CostTracker.format_tokens(
+                  (@status[:cost] && @status.cost.total_tokens) || 0
+                )} tok
+              </span>
+            </div>
             <%!-- Bot vitals --%>
             <%= if @status.health do %>
               <div class="flex items-center justify-between">

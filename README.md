@@ -2,6 +2,8 @@
 
 Phoenix LiveView control panel for a Minecraft server. Manage bots, execute RCON commands, fire effects, render block text, and watch events — all from a browser dashboard or the command line.
 
+![MC Fun Dashboard — Units tab](docs/mcfun-units.png)
+
 ## Features
 
 **Bots**
@@ -105,11 +107,12 @@ bin/mc doctor               # health check
 Phoenix LiveView Dashboard (/dashboard)
     |
     |-- DashboardLive -------- Parent LiveView (tab routing, PubSub, shared state)
-    |   |-- UnitsPanelLive     Bot deploy, cards, spawn/stop
+    |   |-- UnitsPanelLive     Bot deploy, cards, spawn/stop, online players
     |   |-- RconConsoleLive    RCON terminal, history, quick commands
     |   |-- EventStreamLive    Real-time event log
-    |   |-- EffectsPanelLive   Effects, titles, entity picker
-    |   |-- DisplayPanelLive   Block text rendering
+    |   |-- EffectsPanelLive   Effects, titles, block text display
+    |   |-- ChatPanelLive      Color-coded chat log
+    |   |-- MapPanelLive       World map (terrain scan + Canvas 2D)
     |   +-- BotConfigModalLive Bot config modal (model, personality, behaviors)
     |
     |-- McFun.Bot ------------ bridge.js (mineflayer + pathfinder, Erlang Port)
@@ -145,12 +148,18 @@ Phoenix LiveView Dashboard (/dashboard)
 
 | Tab | Description |
 |-----|-------------|
-| **UNITS** | Bot cards (HP, food, position, model, activity, behavior, job queue), deploy panel, config modal |
-| **PLAYERS** | Online player cards with stats and `[USE]` coord button |
+| **UNITS** | Bot cards (HP, food, position, model, cost, activity, behavior, job queue), deploy panel, config modal, collapsible online players section |
 | **RCON** | Command terminal, history (arrow keys), Tab-repeat, quick command palette |
-| **FX** | Entity picker, effect buttons, custom title/subtitle message form |
-| **DISPLAY** | Block text rendering with entity-based coordinate fill |
+| **FX** | Entity picker, effect buttons, custom title/subtitle, block text display with entity-based coordinate fill |
 | **EVENTS** | Real-time event stream |
+| **CHAT** | Color-coded chat log (player, whisper, LLM, bot-to-bot, system) |
+| **MAP** | World map from bot chunk data — terrain scan, height-shaded Canvas 2D, live bot/player overlays, zoom + pan |
+
+### World Map
+
+![MC Fun Dashboard — Map tab](docs/mcfun-map.png)
+
+The MAP tab renders terrain from a bot's loaded chunks via mineflayer. Select a bot, hit SCAN, and the surface blocks are rendered onto an HTML Canvas with height-based shading. Bot and player positions update in real-time. Scroll to zoom (0.25x–16x), drag to pan.
 
 ## CLI Tools
 
