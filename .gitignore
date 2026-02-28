@@ -47,3 +47,6 @@ erl_crash.dump
 npm-debug.log
 **/node_modules/
 **/assets/node_modules/
+
+# Claude artifacts
+AGENTS.md
